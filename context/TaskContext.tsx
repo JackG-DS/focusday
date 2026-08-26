@@ -31,6 +31,7 @@ import {
   clearCompletedTasksRPC,
   clearAllDailyTasksRPC,
   generateDueRecurringTasksRPC,
+  pushTemplateToDailyRPC,
 } from '@/lib/supabaseClient';
 
 interface TaskContextType {
@@ -250,7 +251,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   // =========================================================================
-  // Manual & On-Load Refresh Method + Recurring Tasks Generation & Auto Reset
+  // Manual & On-Load Refresh Method (Only Reads from Supabase)
   // =========================================================================
   const refreshTasks = useCallback(async () => {
     if (!supabaseConfig.enabled || !supabaseConfig.url || !supabaseConfig.anonKey) {
@@ -323,21 +324,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }
 
-          // 3. Automatically generate due recurring tasks for today on cloud
-          try {
-            await generateDueRecurringTasksRPC(supabaseConfig);
-          } catch (recurringErr) {
-            console.warn('[TaskContext] Optional generateDueRecurringTasksRPC skipped:', recurringErr);
-          }
-
-          // 4. Attempt server-side rollover RPC
-          try {
-            await rolloverIncompleteTasksRPC(supabaseConfig);
-          } catch (rpcErr) {
-            console.warn('[TaskContext] Rollover RPC skipped:', rpcErr);
-          }
-
-          // 5. Fetch daily_tasks, pool_tasks, and recurring_tasks for current user
+          // 3. Fetch Tasks Directly from Supabase (Strictly Read Only, Never Re-insert Old Stale Items)
           const [dailyRes, poolRes, recurringRes] = await Promise.all([
             client.from('daily_tasks').select('*').order('order_index', { ascending: true }),
             client.from('pool_tasks').select('*').order('created_at', { ascending: false }),
@@ -357,31 +344,22 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const cloudPool: PoolTask[] = poolRes.data || [];
           const cloudRecurring: RecurringTask[] = recurringRes.data || [];
 
-          console.log('[TaskContext] Tasks fetched:', {
+          console.log('[TaskContext] Tasks fetched from cloud:', {
             dailyCount: cloudDaily.length,
             poolCount: cloudPool.length,
             recurringCount: cloudRecurring.length,
           });
 
-          if (cloudDaily.length > 0) {
-            setDailyTasks(cloudDaily);
-          } else if (dailyTasks.length > 0) {
-            const toUpload = dailyTasks.map((t) => ({ ...t, user_id: targetUserId }));
-            await client.from('daily_tasks').insert(toUpload);
-          }
+          // Strictly overwrite state and sync local cache with truth from database
+          setDailyTasks(cloudDaily);
+          StorageService.saveDailyTasks(cloudDaily);
 
-          if (cloudPool.length > 0) {
-            setPoolTasks(cloudPool);
-          } else if (poolTasks.length > 0) {
-            const toUpload = poolTasks.map((t) => ({ ...t, user_id: targetUserId }));
-            await client.from('pool_tasks').insert(toUpload);
-          }
+          setPoolTasks(cloudPool);
+          StorageService.savePoolTasks(cloudPool);
 
-          if (cloudRecurring.length > 0) {
+          if (!recurringRes.error) {
             setRecurringTasks(cloudRecurring);
-          } else if (recurringTasks.length > 0) {
-            const toUpload = recurringTasks.map((t) => ({ ...t, user_id: targetUserId }));
-            await client.from('recurring_tasks').insert(toUpload);
+            StorageService.saveRecurringTasks(cloudRecurring);
           }
 
           setSyncStatus('synced');
@@ -401,9 +379,6 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     supabaseConfig,
     authUser,
     userId,
-    dailyTasks,
-    poolTasks,
-    recurringTasks,
     settings.reset_time,
     settings.last_reset_date,
     checkShouldReset,
@@ -436,7 +411,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       StorageService.saveSettings(loadedSettings);
     }
 
-    // Local Generation of Due Recurring Tasks for Today
+    // Local Generation of Due Recurring Tasks for Today (Initial Mount Only)
     const currentDow = new Date().getDay();
     const existingTitles = new Set(
       loadedDaily.filter((t) => t.date_assigned === today).map((t) => t.title.toLowerCase().trim())
@@ -527,7 +502,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 2. Check Supabase Auth Session on Mount
     if (loadedSupabase.enabled && loadedSupabase.url && loadedSupabase.anonKey) {
       getAuthSession(loadedSupabase)
-        .then((session) => {
+        .then(async (session) => {
           if (session?.user) {
             console.log('[TaskContext] User session found on mount:', session.user.id);
             setAuthUser({
@@ -536,6 +511,14 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
               isAuthenticated: true,
             });
             setUserId(session.user.id);
+
+            // Execute daily generation & rollover ONCE on initial daily mount
+            try {
+              await generateDueRecurringTasksRPC(loadedSupabase);
+              await rolloverIncompleteTasksRPC(loadedSupabase);
+            } catch (initRpcErr) {
+              console.warn('[TaskContext] Initial daily RPC init skipped:', initRpcErr);
+            }
           } else {
             console.log('[TaskContext] No active session on mount, using local mode.');
             setAuthUser({
@@ -634,6 +617,11 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isAuthenticated: true,
         });
         setUserId(result.user.id);
+
+        try {
+          await generateDueRecurringTasksRPC(supabaseConfig);
+        } catch {}
+
         return true;
       }
       return false;
@@ -662,6 +650,11 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isAuthenticated: true,
         });
         setUserId(result.user.id);
+
+        try {
+          await generateDueRecurringTasksRPC(supabaseConfig);
+        } catch {}
+
         return true;
       }
       return false;
@@ -760,7 +753,11 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         created_at: new Date().toISOString(),
       };
 
-      setDailyTasks((prev) => [...prev, newTask]);
+      setDailyTasks((prev) => {
+        const updated = [...prev, newTask];
+        StorageService.saveDailyTasks(updated);
+        return updated;
+      });
 
       if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
@@ -779,8 +776,13 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Clear All Tasks from Today's Daily List
   const clearAllDailyTasks = useCallback(async () => {
     const today = getTodayDateString();
-    setDailyTasks((prev) => prev.filter((t) => t.date_assigned !== today));
 
+    // 1. Immediately clear local state and update local cache synchronously
+    const remainingTasks = dailyTasks.filter((t) => t.date_assigned !== today);
+    setDailyTasks(remainingTasks);
+    StorageService.saveDailyTasks(remainingTasks);
+
+    // 2. Call Supabase RPC to delete from database
     if (supabaseConfig.enabled && authUser.isAuthenticated) {
       try {
         await clearAllDailyTasksRPC(supabaseConfig);
@@ -789,7 +791,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         console.warn('[TaskContext] clear_all_daily_tasks RPC error:', err);
       }
     }
-  }, [supabaseConfig, authUser.isAuthenticated, refreshTasks]);
+  }, [dailyTasks, supabaseConfig, authUser.isAuthenticated, refreshTasks]);
 
   // Pull Bonus Task helper (Guarded against null/empty result)
   const pullBonusTaskToToday = useCallback(
@@ -799,7 +801,6 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (supabaseConfig.enabled && authUser.isAuthenticated && !specificId) {
         try {
           const { data: bonusTask, error } = await pullBonusTaskRPC(supabaseConfig);
-          // Guard against null, empty or invalid result
           if (error || !bonusTask || typeof bonusTask !== 'object' || !bonusTask.id) {
             console.log('[TaskContext] No bonus tasks available from cloud.');
             return null;
@@ -807,9 +808,15 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           setDailyTasks((prev) => {
             if (prev.some((t) => t.id === bonusTask.id)) return prev;
-            return [...prev, bonusTask];
+            const updated = [...prev, bonusTask];
+            StorageService.saveDailyTasks(updated);
+            return updated;
           });
-          setPoolTasks((prev) => prev.filter((p) => p.title !== bonusTask.title && p.id !== bonusTask.id));
+          setPoolTasks((prev) => {
+            const updated = prev.filter((p) => p.title !== bonusTask.title && p.id !== bonusTask.id);
+            StorageService.savePoolTasks(updated);
+            return updated;
+          });
           return bonusTask;
         } catch (rpcErr) {
           console.warn('[TaskContext] RPC pull_bonus_task fallback:', rpcErr);
@@ -831,6 +838,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const updatedPool = poolTasks.filter((p) => p.id !== chosenPoolTask.id);
       setPoolTasks(updatedPool);
+      StorageService.savePoolTasks(updatedPool);
 
       const today = getTodayDateString();
       const todayDaily = dailyTasks.filter((t) => t.date_assigned === today);
@@ -848,7 +856,11 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         created_at: new Date().toISOString(),
       };
 
-      setDailyTasks((prev) => [...prev, newDailyTask]);
+      setDailyTasks((prev) => {
+        const updated = [...prev, newDailyTask];
+        StorageService.saveDailyTasks(updated);
+        return updated;
+      });
 
       if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
@@ -883,6 +895,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         t.id === id ? { ...t, completed: nextCompleted } : t
       );
       setDailyTasks(updatedTasks);
+      StorageService.saveDailyTasks(updatedTasks);
       playSound('complete');
 
       // 2. Await Supabase Database Write FIRST
@@ -929,17 +942,21 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 const { data: bonusTask, error } = await client.rpc('pull_bonus_task');
                 if (error || !bonusTask || typeof bonusTask !== 'object' || !bonusTask.id) {
                   console.log('[TaskContext] No bonus tasks available in pool.');
-                  return; // Exit cleanly without touching undefined properties
+                  return;
                 }
 
                 console.log('[TaskContext] Continuous bonus task pulled:', bonusTask);
                 setDailyTasks((prev) => {
                   if (prev.some((t) => t.id === bonusTask.id)) return prev;
-                  return [...prev, bonusTask];
+                  const next = [...prev, bonusTask];
+                  StorageService.saveDailyTasks(next);
+                  return next;
                 });
-                setPoolTasks((prev) =>
-                  prev.filter((p) => p.title !== bonusTask.title && p.id !== bonusTask.id)
-                );
+                setPoolTasks((prev) => {
+                  const next = prev.filter((p) => p.title !== bonusTask.title && p.id !== bonusTask.id);
+                  StorageService.savePoolTasks(next);
+                  return next;
+                });
                 await refreshTasks();
               } catch (rpcErr) {
                 console.warn('[TaskContext] pull_bonus_task RPC failed:', rpcErr);
@@ -975,9 +992,11 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updateDailyTaskTitle = useCallback(
     async (id: string, newTitle: string) => {
       if (!newTitle.trim()) return;
-      setDailyTasks((prev) =>
-        prev.map((task) => (task.id === id ? { ...task, title: newTitle.trim() } : task))
-      );
+      setDailyTasks((prev) => {
+        const next = prev.map((task) => (task.id === id ? { ...task, title: newTitle.trim() } : task));
+        StorageService.saveDailyTasks(next);
+        return next;
+      });
 
       if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
@@ -996,7 +1015,11 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Delete Daily Task
   const deleteDailyTask = useCallback(
     async (id: string) => {
-      setDailyTasks((prev) => prev.filter((task) => task.id !== id));
+      setDailyTasks((prev) => {
+        const next = prev.filter((task) => task.id !== id);
+        StorageService.saveDailyTasks(next);
+        return next;
+      });
 
       if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
@@ -1033,6 +1056,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const otherTasks = dailyTasks.filter((t) => t.date_assigned !== today);
       const allUpdated = [...otherTasks, ...reordered];
       setDailyTasks(allUpdated);
+      StorageService.saveDailyTasks(allUpdated);
 
       if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
@@ -1064,7 +1088,11 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         created_at: new Date().toISOString(),
       };
 
-      setPoolTasks((prev) => [newPoolTask, ...prev]);
+      setPoolTasks((prev) => {
+        const next = [newPoolTask, ...prev];
+        StorageService.savePoolTasks(next);
+        return next;
+      });
 
       if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
@@ -1083,7 +1111,11 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Delete Pool Task
   const deletePoolTask = useCallback(
     async (id: string) => {
-      setPoolTasks((prev) => prev.filter((p) => p.id !== id));
+      setPoolTasks((prev) => {
+        const next = prev.filter((p) => p.id !== id);
+        StorageService.savePoolTasks(next);
+        return next;
+      });
 
       if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
@@ -1116,7 +1148,11 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         created_at: new Date().toISOString(),
       };
 
-      setRecurringTasks((prev) => [newRecurring, ...prev]);
+      setRecurringTasks((prev) => {
+        const next = [newRecurring, ...prev];
+        StorageService.saveRecurringTasks(next);
+        return next;
+      });
 
       if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
@@ -1134,9 +1170,11 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateRecurringTask = useCallback(
     async (id: string, updates: Partial<RecurringTask>) => {
-      setRecurringTasks((prev) =>
-        prev.map((r) => (r.id === id ? { ...r, ...updates } : r))
-      );
+      setRecurringTasks((prev) => {
+        const next = prev.map((r) => (r.id === id ? { ...r, ...updates } : r));
+        StorageService.saveRecurringTasks(next);
+        return next;
+      });
 
       if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
@@ -1154,7 +1192,11 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const deleteRecurringTask = useCallback(
     async (id: string) => {
-      setRecurringTasks((prev) => prev.filter((r) => r.id !== id));
+      setRecurringTasks((prev) => {
+        const next = prev.filter((r) => r.id !== id);
+        StorageService.saveRecurringTasks(next);
+        return next;
+      });
 
       if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
@@ -1185,7 +1227,11 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
             if (!error) {
               if (newTask) {
-                setDailyTasks((prev) => [...prev, newTask]);
+                setDailyTasks((prev) => {
+                  const next = [...prev, newTask];
+                  StorageService.saveDailyTasks(next);
+                  return next;
+                });
               }
               await refreshTasks();
               return true;
