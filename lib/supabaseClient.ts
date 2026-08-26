@@ -38,6 +38,23 @@ export function getSupabaseClient(config?: SupabaseConfig): SupabaseClient | nul
   }
 }
 
+// Get Active Session
+export async function getAuthSession(config?: SupabaseConfig): Promise<Session | null> {
+  const client = getSupabaseClient(config);
+  if (!client) return null;
+  try {
+    const { data, error } = await client.auth.getSession();
+    if (error) {
+      console.warn('[TaskContext] getSession error:', error.message);
+      return null;
+    }
+    return data.session;
+  } catch (err) {
+    console.warn('[TaskContext] getSession exception:', err);
+    return null;
+  }
+}
+
 // Simple Email / Password Sign Up
 export async function signUpWithEmail(
   email: string,

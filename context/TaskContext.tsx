@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { arrayMove } from '@dnd-kit/sortable';
 import {
@@ -21,6 +21,7 @@ import {
 } from '@/lib/storage';
 import {
   getSupabaseClient,
+  getAuthSession,
   signInWithEmail,
   signUpWithEmail,
   signOutUser,
@@ -114,6 +115,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isClientReady, setIsClientReady] = useState(false);
 
   const todayStr = useMemo(() => getTodayDateString(), []);
+  const isFetchingRef = useRef<boolean>(false);
 
   // Confetti trigger helper
   const triggerConfetti = useCallback(() => {
@@ -177,24 +179,133 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [settings.soundEnabled]);
 
-  // Initial Load & Midnight Rollover Execution (Synchronous Local-First)
+  // Dismiss sync error
+  const dismissSyncError = useCallback(() => {
+    setSyncErrorMessage(null);
+  }, []);
+
+  // =========================================================================
+  // 2. Explicit Fetch Functions with guaranteed finally block & full logging
+  // =========================================================================
+  const fetchTasksFromCloud = useCallback(async (targetUserId: string) => {
+    if (isFetchingRef.current) return;
+    if (!supabaseConfig.enabled || !supabaseConfig.url || !supabaseConfig.anonKey) {
+      setIsLoading(false);
+      setIsSyncing(false);
+      return;
+    }
+
+    const client = getSupabaseClient(supabaseConfig);
+    if (!client) {
+      setIsLoading(false);
+      setIsSyncing(false);
+      return;
+    }
+
+    isFetchingRef.current = true;
+    setIsSyncing(true);
+    setSyncStatus('syncing');
+    setSyncErrorMessage(null);
+
+    // 6-second timeout race to prevent infinite hanging
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Cloud sync timeout (6s). Database unreachable.')), 6000)
+    );
+
+    try {
+      await Promise.race([
+        (async () => {
+          // Attempt server-side rollover RPC
+          try {
+            await rolloverIncompleteTasksRPC(supabaseConfig);
+          } catch (rpcErr) {
+            console.warn('[TaskContext] Optional rollover RPC skip:', rpcErr);
+          }
+
+          // Fetch daily_tasks and pool_tasks for current user
+          const [dailyRes, poolRes] = await Promise.all([
+            client.from('daily_tasks').select('*').order('order_index', { ascending: true }),
+            client.from('pool_tasks').select('*').order('created_at', { ascending: false }),
+          ]);
+
+          if (dailyRes.error) {
+            console.error('[TaskContext] Fetch error (daily_tasks):', dailyRes.error);
+            throw new Error(dailyRes.error.message);
+          }
+          if (poolRes.error) {
+            console.error('[TaskContext] Fetch error (pool_tasks):', poolRes.error);
+            throw new Error(poolRes.error.message);
+          }
+
+          const cloudDaily: DailyTask[] = dailyRes.data || [];
+          const cloudPool: PoolTask[] = poolRes.data || [];
+
+          console.log('[TaskContext] Tasks fetched:', {
+            dailyCount: cloudDaily.length,
+            poolCount: cloudPool.length,
+            daily: cloudDaily,
+            pool: cloudPool,
+          });
+
+          // If cloud has data, sync into state
+          if (cloudDaily.length > 0) {
+            setDailyTasks(cloudDaily);
+          } else if (dailyTasks.length > 0) {
+            // Upload initial local tasks to cloud
+            const toUpload = dailyTasks.map((t) => ({ ...t, user_id: targetUserId }));
+            await client.from('daily_tasks').insert(toUpload);
+          }
+
+          if (cloudPool.length > 0) {
+            setPoolTasks(cloudPool);
+          } else if (poolTasks.length > 0) {
+            const toUpload = poolTasks.map((t) => ({ ...t, user_id: targetUserId }));
+            await client.from('pool_tasks').insert(toUpload);
+          }
+
+          setSyncStatus('synced');
+          setSyncErrorMessage(null);
+        })(),
+        timeoutPromise,
+      ]);
+    } catch (err: any) {
+      console.error('[TaskContext] Fetch error:', err);
+      setSyncStatus('error');
+      setSyncErrorMessage(err?.message || 'Database unreachable. Running in local offline mode.');
+    } finally {
+      // ALWAYS Clear the Spinner in finally block
+      setIsSyncing(false);
+      setIsLoading(false);
+      isFetchingRef.current = false;
+    }
+  }, [supabaseConfig, dailyTasks, poolTasks]);
+
+  // Sync with Cloud alias
+  const syncWithCloud = useCallback(async () => {
+    if (authUser.isAuthenticated && authUser.id && authUser.id !== 'local-user') {
+      await fetchTasksFromCloud(authUser.id);
+    } else {
+      setIsSyncing(false);
+      setIsLoading(false);
+      setSyncStatus('idle');
+    }
+  }, [authUser, fetchTasksFromCloud]);
+
+  // =========================================================================
+  // 1. Guard Auth & Loading on Mount
+  // =========================================================================
   useEffect(() => {
     const localUid = getOrCreateUserId();
     setUserId(localUid);
-    setAuthUser({
-      id: localUid,
-      email: null,
-      isAuthenticated: false,
-    });
 
+    // 1. Load Local State synchronously
     let loadedDaily = StorageService.getDailyTasks(localUid);
     const loadedPool = StorageService.getPoolTasks(localUid);
     const loadedSettings = StorageService.getSettings();
     const loadedSupabase = StorageService.getSupabaseConfig();
-
     const today = getTodayDateString();
 
-    // Perform Automatic Midnight Rollover locally
+    // Local Midnight Rollover
     const overdueIncompleteTasks = loadedDaily.filter(
       (task) => !task.completed && task.date_assigned < today
     );
@@ -234,7 +345,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       });
     }
 
-    // Evaluate Streak
+    // Streak Check
     let newStreak = loadedSettings.streakCount || 1;
     if (loadedSettings.lastActiveDate && loadedSettings.lastActiveDate !== today) {
       const lastActive = new Date(loadedSettings.lastActiveDate);
@@ -255,8 +366,132 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSettings(loadedSettings);
     setSupabaseConfig(loadedSupabase);
     setIsClientReady(true);
-    setIsLoading(false); // Local ready immediately with zero blocking!
+
+    // 2. Check Supabase Auth Session on Mount
+    if (loadedSupabase.enabled && loadedSupabase.url && loadedSupabase.anonKey) {
+      getAuthSession(loadedSupabase).then((session) => {
+        if (session?.user) {
+          console.log('[TaskContext] User session:', session.user.id);
+          setAuthUser({
+            id: session.user.id,
+            email: session.user.email || null,
+            isAuthenticated: true,
+          });
+          setUserId(session.user.id);
+          fetchTasksFromCloud(session.user.id);
+        } else {
+          console.log('[TaskContext] No active user session, using local offline storage.');
+          setAuthUser({
+            id: localUid,
+            email: null,
+            isAuthenticated: false,
+          });
+          setUserId(localUid);
+          setIsLoading(false);
+          setIsSyncing(false);
+          setSyncStatus('idle');
+        }
+      }).catch((err) => {
+        console.error('[TaskContext] Auth session error:', err);
+        setIsLoading(false);
+        setIsSyncing(false);
+      });
+    } else {
+      console.log('[TaskContext] Supabase not configured or disabled. Operating in local mode.');
+      setIsLoading(false);
+      setIsSyncing(false);
+      setSyncStatus('idle');
+    }
   }, []);
+
+  // Listen to Auth State Changes (Sign in / Sign out)
+  useEffect(() => {
+    if (!supabaseConfig.enabled || !supabaseConfig.url || !supabaseConfig.anonKey) return;
+    const client = getSupabaseClient(supabaseConfig);
+    if (!client) return;
+
+    const { data: authListener } = client.auth.onAuthStateChange(
+      (event, session) => {
+        console.log('[TaskContext] Auth state changed:', event, session?.user?.id);
+        if (session?.user) {
+          setAuthUser({
+            id: session.user.id,
+            email: session.user.email || null,
+            isAuthenticated: true,
+          });
+          setUserId(session.user.id);
+          fetchTasksFromCloud(session.user.id);
+        } else if (event === 'SIGNED_OUT') {
+          const localUid = getOrCreateUserId();
+          setAuthUser({
+            id: localUid,
+            email: null,
+            isAuthenticated: false,
+          });
+          setUserId(localUid);
+          setSyncStatus('idle');
+          setIsSyncing(false);
+          setIsLoading(false);
+          setSyncErrorMessage(null);
+        }
+      }
+    );
+
+    return () => {
+      authListener.subscription.unsubscribe();
+    };
+  }, [supabaseConfig, fetchTasksFromCloud]);
+
+  // =========================================================================
+  // 4. Decoupled Realtime Subscription (Only when user is authenticated)
+  // =========================================================================
+  useEffect(() => {
+    if (!supabaseConfig.enabled || !authUser.isAuthenticated || !authUser.id || authUser.id === 'local-user') {
+      return;
+    }
+
+    const client = getSupabaseClient(supabaseConfig);
+    if (!client) return;
+
+    console.log('[TaskContext] Subscribing to Realtime channel public:tasks for user:', authUser.id);
+
+    const channel = client
+      .channel('public:tasks')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'daily_tasks',
+          filter: `user_id=eq.${authUser.id}`,
+        },
+        (payload) => {
+          console.log('[TaskContext] Realtime daily_tasks change:', payload.eventType);
+          syncWithCloud();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'pool_tasks',
+          filter: `user_id=eq.${authUser.id}`,
+        },
+        (payload) => {
+          console.log('[TaskContext] Realtime pool_tasks change:', payload.eventType);
+          syncWithCloud();
+        }
+      )
+      .subscribe((status) => {
+        console.log('[TaskContext] Realtime channel status:', status);
+      });
+
+    return () => {
+      console.log('[TaskContext] Unsubscribing from Realtime channel public:tasks');
+      client.removeChannel(channel);
+    };
+  }, [supabaseConfig.enabled, authUser.isAuthenticated, authUser.id, syncWithCloud]);
 
   // Save Daily Tasks to Local Storage
   useEffect(() => {
@@ -279,219 +514,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, []);
 
-  // Dismiss sync error banner
-  const dismissSyncError = useCallback(() => {
-    setSyncErrorMessage(null);
-  }, []);
-
-  // Cloud Sync Handler with 7s Fallback Timeout & Guaranteed finally block
-  const syncWithCloud = useCallback(async () => {
-    if (!supabaseConfig.enabled || !supabaseConfig.url || !supabaseConfig.anonKey) {
-      setSyncStatus('idle');
-      setIsSyncing(false);
-      setIsLoading(false);
-      return;
-    }
-
-    // If no authenticated user session exists, don't execute blocking remote queries
-    if (!authUser.isAuthenticated || !authUser.id || authUser.id === 'local-user') {
-      setSyncStatus('idle');
-      setIsSyncing(false);
-      setIsLoading(false);
-      return;
-    }
-
-    const client = getSupabaseClient(supabaseConfig);
-    if (!client) {
-      setSyncStatus('error');
-      setSyncErrorMessage('Supabase client could not be initialized. Check URL and Anon Key.');
-      setIsSyncing(false);
-      setIsLoading(false);
-      return;
-    }
-
-    setIsSyncing(true);
-    setSyncStatus('syncing');
-    setSyncErrorMessage(null);
-
-    // Timeout safety promise (7 seconds)
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Cloud sync request timed out (7s). Database unreachable.')), 7000)
-    );
-
-    try {
-      await Promise.race([
-        (async () => {
-          // 1. Attempt server-side rollover RPC
-          try {
-            await rolloverIncompleteTasksRPC(supabaseConfig);
-          } catch {
-            // RPC not deployed yet, client fallback continues
-          }
-
-          // 2. Fetch cloud tasks for current user
-          const [dailyRes, poolRes] = await Promise.all([
-            client.from('daily_tasks').select('*').order('order_index', { ascending: true }),
-            client.from('pool_tasks').select('*').order('created_at', { ascending: false }),
-          ]);
-
-          if (dailyRes.error || poolRes.error) {
-            throw new Error((dailyRes.error || poolRes.error)?.message || 'Failed to fetch tasks from database');
-          }
-
-          const cloudDaily: DailyTask[] = dailyRes.data || [];
-          const cloudPool: PoolTask[] = poolRes.data || [];
-
-          // Merge Strategy
-          if (cloudDaily.length === 0 && dailyTasks.length > 0) {
-            const tasksToUpload = dailyTasks.map((t) => ({ ...t, user_id: authUser.id }));
-            await client.from('daily_tasks').insert(tasksToUpload);
-          } else if (cloudDaily.length > 0) {
-            setDailyTasks(cloudDaily);
-          }
-
-          if (cloudPool.length === 0 && poolTasks.length > 0) {
-            const tasksToUpload = poolTasks.map((t) => ({ ...t, user_id: authUser.id }));
-            await client.from('pool_tasks').insert(tasksToUpload);
-          } else if (cloudPool.length > 0) {
-            setPoolTasks(cloudPool);
-          }
-
-          setSyncStatus('synced');
-        })(),
-        timeoutPromise,
-      ]);
-    } catch (err: any) {
-      console.warn('Sync attempt failed or timed out:', err);
-      setSyncStatus('error');
-      setSyncErrorMessage(err?.message || 'Database unreachable. Running in local offline mode.');
-    } finally {
-      setIsSyncing(false);
-      setIsLoading(false);
-    }
-  }, [supabaseConfig, authUser, dailyTasks, poolTasks]);
-
-  // Auth State Listener with Clean Unmount
-  useEffect(() => {
-    if (!supabaseConfig.enabled || !supabaseConfig.url || !supabaseConfig.anonKey) {
-      setIsLoading(false);
-      setIsSyncing(false);
-      return;
-    }
-
-    const client = getSupabaseClient(supabaseConfig);
-    if (!client) {
-      setIsLoading(false);
-      setIsSyncing(false);
-      return;
-    }
-
-    let isMounted = true;
-
-    // Check initial user session
-    client.auth
-      .getUser()
-      .then(({ data }) => {
-        if (!isMounted) return;
-        if (data?.user) {
-          setAuthUser({
-            id: data.user.id,
-            email: data.user.email || null,
-            isAuthenticated: true,
-          });
-          setUserId(data.user.id);
-        }
-      })
-      .catch((err) => {
-        console.warn('Auth getUser error:', err);
-      })
-      .finally(() => {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      });
-
-    const { data: authListener } = client.auth.onAuthStateChange(
-      (event, session) => {
-        if (!isMounted) return;
-        if (session?.user) {
-          setAuthUser({
-            id: session.user.id,
-            email: session.user.email || null,
-            isAuthenticated: true,
-          });
-          setUserId(session.user.id);
-        } else if (event === 'SIGNED_OUT') {
-          const localUid = getOrCreateUserId();
-          setAuthUser({
-            id: localUid,
-            email: null,
-            isAuthenticated: false,
-          });
-          setUserId(localUid);
-          setSyncStatus('idle');
-          setIsSyncing(false);
-          setSyncErrorMessage(null);
-        }
-      }
-    );
-
-    return () => {
-      isMounted = false;
-      authListener.subscription.unsubscribe();
-    };
-  }, [supabaseConfig]);
-
-  // Trigger sync when user becomes authenticated
-  useEffect(() => {
-    if (authUser.isAuthenticated && supabaseConfig.enabled) {
-      syncWithCloud();
-    }
-  }, [authUser.isAuthenticated, authUser.id, supabaseConfig.enabled, syncWithCloud]);
-
-  // Realtime Channel Subscription: Single channel 'public:tasks' filtered by user_id
-  useEffect(() => {
-    if (!supabaseConfig.enabled || !authUser.isAuthenticated || !authUser.id || authUser.id === 'local-user') {
-      return;
-    }
-
-    const client = getSupabaseClient(supabaseConfig);
-    if (!client) return;
-
-    const channel = client
-      .channel('public:tasks')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'daily_tasks',
-          filter: `user_id=eq.${authUser.id}`,
-        },
-        () => {
-          syncWithCloud();
-        }
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'pool_tasks',
-          filter: `user_id=eq.${authUser.id}`,
-        },
-        () => {
-          syncWithCloud();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      client.removeChannel(channel);
-    };
-  }, [supabaseConfig, authUser.isAuthenticated, authUser.id, syncWithCloud]);
-
-  // Network Status Monitor (Online/Offline)
+  // Network Status Monitor
   useEffect(() => {
     const handleOnline = () => {
       if (supabaseConfig.enabled && authUser.isAuthenticated) {
@@ -540,11 +563,12 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isAuthenticated: true,
         });
         setUserId(result.user.id);
+        fetchTasksFromCloud(result.user.id);
         return true;
       }
       return false;
     },
-    [supabaseConfig]
+    [supabaseConfig, fetchTasksFromCloud]
   );
 
   // Sign Up Handler
@@ -568,11 +592,12 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isAuthenticated: true,
         });
         setUserId(result.user.id);
+        fetchTasksFromCloud(result.user.id);
         return true;
       }
       return false;
     },
-    [supabaseConfig]
+    [supabaseConfig, fetchTasksFromCloud]
   );
 
   // Sign Out Handler
@@ -597,17 +622,18 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSupabaseConfig(newConfig);
     StorageService.saveSupabaseConfig(newConfig);
     if (newConfig.enabled && newConfig.url && newConfig.anonKey) {
-      if (authUser.isAuthenticated) {
-        syncWithCloud();
+      if (authUser.isAuthenticated && authUser.id !== 'local-user') {
+        fetchTasksFromCloud(authUser.id);
       } else {
         setSyncStatus('idle');
+        setIsSyncing(false);
       }
     } else {
       setSyncStatus('idle');
       setIsSyncing(false);
       setSyncErrorMessage(null);
     }
-  }, [authUser.isAuthenticated, syncWithCloud]);
+  }, [authUser, fetchTasksFromCloud]);
 
   // Today's Tasks
   const todaysTasks = useMemo(() => {
@@ -681,7 +707,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [dailyTasks, userId, authUser, supabaseConfig]
   );
 
-  // Pull Bonus Task helper (with server-side pull_bonus_task RPC + client fallback)
+  // Pull Bonus Task helper
   const pullBonusTaskToToday = useCallback(
     async (specificId?: string): Promise<DailyTask | null> => {
       if (poolTasks.length === 0 && !specificId) return null;
@@ -695,8 +721,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setPoolTasks((prev) => prev.filter((p) => p.title !== bonusTask.title));
             return bonusTask;
           }
-        } catch {
-          // Fallback to client-side logic below
+        } catch (rpcErr) {
+          console.warn('[TaskContext] RPC pull_bonus_task fallback:', rpcErr);
         }
       }
 
