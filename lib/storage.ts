@@ -147,6 +147,7 @@ export const DEFAULT_SETTINGS: UserSettings = {
   bonusTriggeredDates: [],
   reset_time: '04:00',
   last_reset_date: '',
+  day_ended_date: null,
 };
 
 export const StorageService = {

@@ -15,20 +15,33 @@ import {
   FileText,
   Save,
   Plus,
+  Palette,
 } from 'lucide-react';
-import { DailyTask } from '@/lib/types';
+import { DailyTask, TaskColor } from '@/lib/types';
 import { useTaskContext } from '@/context/TaskContext';
+import { TASK_COLOR_PALETTE } from '@/components/TaskInput';
 
 interface TaskItemProps {
   task: DailyTask;
   isDragDisabled?: boolean;
 }
 
+const COLOR_ACCENTS: Record<string, { borderLeft: string; dot: string }> = {
+  red: { borderLeft: 'border-l-4 border-l-rose-500', dot: 'bg-rose-500' },
+  orange: { borderLeft: 'border-l-4 border-l-orange-500', dot: 'bg-orange-500' },
+  amber: { borderLeft: 'border-l-4 border-l-amber-500', dot: 'bg-amber-500' },
+  emerald: { borderLeft: 'border-l-4 border-l-emerald-500', dot: 'bg-emerald-500' },
+  blue: { borderLeft: 'border-l-4 border-l-blue-500', dot: 'bg-blue-500' },
+  purple: { borderLeft: 'border-l-4 border-l-purple-500', dot: 'bg-purple-500' },
+  default: { borderLeft: '', dot: '' },
+};
+
 export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false }) => {
   const {
     toggleDailyTask,
     updateDailyTaskTitle,
     updateDailyTaskNotes,
+    updateDailyTaskColor,
     deleteDailyTask,
   } = useTaskContext();
 
@@ -38,6 +51,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
   const [isExpanded, setIsExpanded] = useState(false);
   const [isEditingNotes, setIsEditingNotes] = useState(false);
   const [editNotes, setEditNotes] = useState(task.notes || '');
+  const [selectedColor, setSelectedColor] = useState<TaskColor>((task.color as TaskColor) || 'default');
 
   const titleInputRef = useRef<HTMLInputElement>(null);
   const notesTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -64,6 +78,10 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
   }, [task.notes]);
 
   useEffect(() => {
+    setSelectedColor((task.color as TaskColor) || 'default');
+  }, [task.color]);
+
+  useEffect(() => {
     if (isEditingTitle && titleInputRef.current) {
       titleInputRef.current.focus();
       titleInputRef.current.select();
@@ -87,6 +105,9 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
 
   const handleSaveNotes = () => {
     updateDailyTaskNotes(task.id, editNotes.trim() || null);
+    if (selectedColor !== (task.color || 'default')) {
+      updateDailyTaskColor(task.id, selectedColor !== 'default' ? selectedColor : null);
+    }
     setIsEditingNotes(false);
   };
 
@@ -100,12 +121,16 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
   };
 
   const hasNotes = Boolean(task.notes && task.notes.trim().length > 0);
+  const taskColorKey = task.color || 'default';
+  const accent = COLOR_ACCENTS[taskColorKey] || COLOR_ACCENTS.default;
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`group relative rounded-2xl border transition-all select-none ${
+      className={`group relative rounded-2xl border transition-all select-none overflow-hidden ${
+        accent.borderLeft
+      } ${
         isDragging
           ? 'z-50 opacity-90 scale-[1.02] shadow-xl bg-white dark:bg-slate-800 border-emerald-500/60 ring-2 ring-emerald-500/20'
           : task.completed
@@ -176,6 +201,11 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
             </div>
           ) : (
             <div className="flex items-center gap-1.5 flex-wrap">
+              {/* Color Dot (if color specified) */}
+              {accent.dot && (
+                <span className={`w-2 h-2 rounded-full shrink-0 ${accent.dot}`} />
+              )}
+
               <span
                 onClick={() => toggleDailyTask(task.id)}
                 className={`text-sm sm:text-base font-medium break-words cursor-pointer transition-all ${
@@ -248,29 +278,57 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
 
       {/* Expandable Notes Drawer / Accordion */}
       {isExpanded && (
-        <div className="px-4 pb-3.5 pt-1 border-t border-slate-100 dark:border-slate-700/50 animate-slide-up">
+        <div className="px-4 pb-3.5 pt-1 border-t border-slate-100 dark:border-slate-700/50 animate-slide-up space-y-2.5">
           {isEditingNotes ? (
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                <span className="flex items-center gap-1">
-                  <FileText className="w-3 h-3 text-emerald-500" />
-                  <span>Editing Notes</span>
+            <div className="space-y-2.5">
+              {/* Color Selector in Edit Mode */}
+              <div className="flex items-center justify-between pt-1">
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                  <Palette className="w-3 h-3 text-slate-400" />
+                  <span>Color:</span>
                 </span>
-                <span className="text-[10px] text-slate-400">Markdown / Lists supported</span>
+                <div className="flex items-center gap-1.5">
+                  {TASK_COLOR_PALETTE.map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setSelectedColor(p.id)}
+                      title={p.name}
+                      className={`w-4 h-4 rounded-full transition-transform ${p.bgClass} ${
+                        selectedColor === p.id
+                          ? 'ring-2 ring-emerald-500 ring-offset-2 scale-110'
+                          : 'opacity-70 hover:opacity-100'
+                      }`}
+                    />
+                  ))}
+                </div>
               </div>
-              <textarea
-                ref={notesTextareaRef}
-                value={editNotes}
-                onChange={(e) => setEditNotes(e.target.value)}
-                rows={3}
-                placeholder="Add sub-items, checklist items, links, or notes..."
-                className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-900 border border-emerald-500/70 rounded-xl p-2.5 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 leading-relaxed resize-y"
-              />
+
+              {/* Notes Textarea */}
+              <div className="space-y-1">
+                <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                  <span className="flex items-center gap-1">
+                    <FileText className="w-3 h-3 text-emerald-500" />
+                    <span>Editing Notes</span>
+                  </span>
+                  <span className="text-[10px] text-slate-400">Markdown / Lists supported</span>
+                </div>
+                <textarea
+                  ref={notesTextareaRef}
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  rows={3}
+                  placeholder="Add sub-items, checklist items, links, or notes..."
+                  className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-900 border border-emerald-500/70 rounded-xl p-2.5 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 leading-relaxed resize-y"
+                />
+              </div>
+
               <div className="flex items-center justify-end gap-1.5">
                 <button
                   type="button"
                   onClick={() => {
                     setEditNotes(task.notes || '');
+                    setSelectedColor((task.color as TaskColor) || 'default');
                     setIsEditingNotes(false);
                   }}
                   className="px-2.5 py-1 text-xs font-semibold rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
@@ -283,7 +341,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
                   className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all flex items-center gap-1"
                 >
                   <Save className="w-3 h-3" />
-                  <span>Save Notes</span>
+                  <span>Save</span>
                 </button>
               </div>
             </div>
@@ -300,7 +358,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
                   </div>
                   <div className="mt-2 pt-1 border-t border-slate-200/40 dark:border-slate-700/40 flex items-center justify-between text-[11px] text-slate-400">
                     <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
-                      <Edit3 className="w-3 h-3" /> Click to edit notes
+                      <Edit3 className="w-3 h-3" /> Click to edit notes or color
                     </span>
                   </div>
                 </div>
@@ -311,7 +369,7 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
                   className="w-full py-2.5 px-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/30 text-xs font-semibold text-slate-500 hover:text-emerald-600 hover:border-emerald-500 transition-all flex items-center justify-center gap-1.5"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Add details, list items, or notes</span>
+                  <span>Add details, list items, or change color</span>
                 </button>
               )}
             </div>

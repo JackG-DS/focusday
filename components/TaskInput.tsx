@@ -1,27 +1,36 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, Sparkles, FileText, X, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, FileText, X, ChevronDown, ChevronUp, Palette } from 'lucide-react';
 import { useTaskContext } from '@/context/TaskContext';
+import { TaskColor } from '@/lib/types';
+
+export const TASK_COLOR_PALETTE: { id: TaskColor; name: string; bgClass: string }[] = [
+  { id: 'default', name: 'Default', bgClass: 'bg-slate-300 dark:bg-slate-600' },
+  { id: 'red', name: 'Red', bgClass: 'bg-rose-500' },
+  { id: 'orange', name: 'Orange', bgClass: 'bg-orange-500' },
+  { id: 'amber', name: 'Amber', bgClass: 'bg-amber-500' },
+  { id: 'emerald', name: 'Green', bgClass: 'bg-emerald-500' },
+  { id: 'blue', name: 'Blue', bgClass: 'bg-blue-500' },
+  { id: 'purple', name: 'Purple', bgClass: 'bg-purple-500' },
+];
 
 export const TaskInput: React.FC = () => {
   const [title, setTitle] = useState('');
   const [notes, setNotes] = useState('');
-  const [showNotes, setShowNotes] = useState(false);
+  const [color, setColor] = useState<TaskColor>('default');
+  const [showDetails, setShowDetails] = useState(false);
   const { addDailyTask } = useTaskContext();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (title.trim()) {
-      addDailyTask(title.trim(), notes.trim() || null);
+      addDailyTask(title.trim(), notes.trim() || null, color !== 'default' ? color : null);
       setTitle('');
       setNotes('');
-      setShowNotes(false);
+      setColor('default');
+      setShowDetails(false);
     }
-  };
-
-  const handleQuickAdd = (presetTitle: string, presetNotes?: string) => {
-    addDailyTask(presetTitle, presetNotes || null);
   };
 
   return (
@@ -42,16 +51,16 @@ export const TaskInput: React.FC = () => {
           <div className="absolute right-2 flex items-center gap-1">
             <button
               type="button"
-              onClick={() => setShowNotes(!showNotes)}
-              title={showNotes ? 'Hide notes' : 'Add notes/details'}
+              onClick={() => setShowDetails(!showDetails)}
+              title={showDetails ? 'Hide details' : 'Add notes, checklist, or color'}
               className={`p-1.5 rounded-lg text-xs font-semibold flex items-center gap-1 transition-colors ${
-                showNotes || notes.trim()
+                showDetails || notes.trim() || color !== 'default'
                   ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
                   : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
               }`}
             >
               <FileText className="w-4 h-4" />
-              {showNotes ? (
+              {showDetails ? (
                 <ChevronUp className="w-3 h-3" />
               ) : (
                 <ChevronDown className="w-3 h-3" />
@@ -69,73 +78,62 @@ export const TaskInput: React.FC = () => {
           </div>
         </div>
 
-        {/* Expandable Notes Input */}
-        {showNotes && (
-          <div className="p-3 pt-0 border-t border-slate-100 dark:border-slate-700/60 animate-slide-up space-y-1">
-            <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400 pt-2">
-              <span className="flex items-center gap-1">
-                <FileText className="w-3.5 h-3.5 text-emerald-500" />
-                <span>Notes &amp; Sub-items (Optional)</span>
+        {/* Expandable Details: Notes & Color Picker */}
+        {showDetails && (
+          <div className="p-3 pt-0 border-t border-slate-100 dark:border-slate-700/60 animate-slide-up space-y-3">
+            {/* Color Palette Selector */}
+            <div className="pt-2 flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                <Palette className="w-3.5 h-3.5 text-slate-400" />
+                <span>Task Color:</span>
               </span>
-              {notes && (
-                <button
-                  type="button"
-                  onClick={() => setNotes('')}
-                  className="hover:text-red-500 flex items-center gap-0.5"
-                >
-                  <X className="w-3 h-3" />
-                  <span>Clear</span>
-                </button>
-              )}
+              <div className="flex items-center gap-1.5">
+                {TASK_COLOR_PALETTE.map((p) => (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => setColor(p.id)}
+                    title={p.name}
+                    aria-label={`Color ${p.name}`}
+                    className={`w-5 h-5 rounded-full transition-transform ${p.bgClass} ${
+                      color === p.id
+                        ? 'ring-2 ring-emerald-500 ring-offset-2 scale-110 shadow-xs'
+                        : 'opacity-70 hover:opacity-100 hover:scale-105'
+                    }`}
+                  />
+                ))}
+              </div>
             </div>
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              placeholder="Add details, bullet points, links, or context..."
-              className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 leading-relaxed resize-y"
-            />
+
+            {/* Notes Input */}
+            <div className="space-y-1">
+              <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                <span className="flex items-center gap-1">
+                  <FileText className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Notes &amp; Sub-items (Optional)</span>
+                </span>
+                {notes && (
+                  <button
+                    type="button"
+                    onClick={() => setNotes('')}
+                    className="hover:text-red-500 flex items-center gap-0.5"
+                  >
+                    <X className="w-3 h-3" />
+                    <span>Clear</span>
+                  </button>
+                )}
+              </div>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+                placeholder="Add details, bullet points, links, or context..."
+                className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 leading-relaxed resize-y"
+              />
+            </div>
           </div>
         )}
       </form>
-
-      {/* Quick suggested action tags */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar text-xs text-slate-500 dark:text-slate-400">
-        <span className="shrink-0 flex items-center gap-1 font-medium text-[11px] text-slate-400">
-          <Sparkles className="w-3 h-3 text-emerald-500" /> Ideas:
-        </span>
-        <button
-          type="button"
-          onClick={() =>
-            handleQuickAdd(
-              'Review pull requests & code sync 💻',
-              '• Check latest branch merges\n• Run regression suite\n• Review security checklist'
-            )
-          }
-          className="shrink-0 px-2.5 py-1 bg-slate-100 dark:bg-slate-800/60 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-full border border-slate-200/60 dark:border-slate-700/60 transition-colors"
-        >
-          + Code review
-        </button>
-        <button
-          type="button"
-          onClick={() =>
-            handleQuickAdd(
-              'Draft weekly goals & milestones 📝',
-              '1. Review previous week blockers\n2. Align priority targets\n3. Assign deadlines'
-            )
-          }
-          className="shrink-0 px-2.5 py-1 bg-slate-100 dark:bg-slate-800/60 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-full border border-slate-200/60 dark:border-slate-700/60 transition-colors"
-        >
-          + Draft goals
-        </button>
-        <button
-          type="button"
-          onClick={() => handleQuickAdd('15 min inbox zero & cleanup 📬')}
-          className="shrink-0 px-2.5 py-1 bg-slate-100 dark:bg-slate-800/60 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 hover:text-emerald-600 dark:hover:text-emerald-400 rounded-full border border-slate-200/60 dark:border-slate-700/60 transition-colors"
-        >
-          + Inbox zero
-        </button>
-      </div>
     </div>
   );
 };

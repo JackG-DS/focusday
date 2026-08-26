@@ -1,8 +1,11 @@
+export type TaskColor = 'default' | 'red' | 'orange' | 'amber' | 'emerald' | 'blue' | 'purple';
+
 export interface DailyTask {
   id: string;
   user_id: string;
   title: string;
   notes?: string | null;
+  color?: string | null;
   completed: boolean;
   order_index: number;
   date_assigned: string; // YYYY-MM-DD
@@ -14,6 +17,7 @@ export interface PoolTask {
   user_id: string;
   title: string;
   notes?: string | null;
+  color?: string | null;
   created_at: string;
 }
 
@@ -22,6 +26,7 @@ export interface RecurringTask {
   user_id: string;
   title: string;
   notes?: string | null;
+  color?: string | null;
   frequency: 'daily' | 'weekly';
   day_of_week?: number; // 0 = Sunday, 1 = Monday, ..., 6 = Saturday (for weekly)
   created_at: string;
@@ -51,6 +56,7 @@ export interface UserSettings {
   bonusTriggeredDates?: string[];
   reset_time: string; // HH:MM, default "04:00"
   last_reset_date?: string; // YYYY-MM-DD
+  day_ended_date?: string | null; // YYYY-MM-DD when user clicks "End Day"
 }
 
 export type ActiveTab = 'today' | 'pool' | 'recurring' | 'history' | 'settings';
