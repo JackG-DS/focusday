@@ -680,80 +680,91 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [poolTasks, dailyTasks, userId, authUser, supabaseConfig]
   );
 
-  // Toggle Daily Task Completion
+  // Toggle Daily Task Completion with DB-First Await & Continuous Bonus Pulls
   const toggleDailyTask = useCallback(
     async (id: string) => {
-      let isAllCompletedAfterToggle = false;
       const today = getTodayDateString();
+      const task = dailyTasks.find((t) => t.id === id);
+      if (!task) return;
 
-      setDailyTasks((prev) => {
-        const nextTasks = prev.map((task) => {
-          if (task.id === id) {
-            return { ...task, completed: !task.completed };
-          }
-          return task;
-        });
+      const nextCompleted = !task.completed;
 
-        const currentToday = nextTasks.filter((t) => t.date_assigned === today);
-        const allCompletedNow = currentToday.length > 0 && currentToday.every((t) => t.completed);
-        const targetTask = prev.find((t) => t.id === id);
-
-        // If toggled to completed and now all today's tasks are completed
-        if (!targetTask?.completed && allCompletedNow) {
-          isAllCompletedAfterToggle = true;
-        }
-
-        return nextTasks;
-      });
-
+      // 1. Optimistic Local State Update
+      const updatedTasks = dailyTasks.map((t) =>
+        t.id === id ? { ...t, completed: nextCompleted } : t
+      );
+      setDailyTasks(updatedTasks);
       playSound('complete');
 
-      // 1. If today's list is completely done, automatically pull bonus task
-      if (isAllCompletedAfterToggle) {
-        triggerConfetti();
-        playSound('bonus');
-
-        updateSettings({
-          bonusTriggeredDates: [...settings.bonusTriggeredDates, today],
-          lastCompletedDate: today,
-          streakCount: settings.streakCount + 1,
-        });
-
-        // If Supabase is connected & authenticated, call pull_bonus_task RPC and refresh
-        if (supabaseConfig.enabled && authUser.isAuthenticated) {
-          const client = getSupabaseClient(supabaseConfig);
-          if (client) {
-            try {
-              const { data: bonusTask, error } = await client.rpc('pull_bonus_task');
-              if (!error && bonusTask) {
-                console.log('[TaskContext] Auto pulled bonus task via RPC:', bonusTask);
-                await refreshTasks();
-              }
-            } catch (rpcErr) {
-              console.warn('[TaskContext] RPC pull_bonus_task error:', rpcErr);
-            }
-          }
-        } else if (poolTasks.length > 0) {
-          // Local offline fallback
-          setTimeout(async () => {
-            await pullBonusTaskToToday();
-          }, 300);
-        }
-      }
-
-      // 2. Persist completion status to cloud
+      // 2. Await Supabase Database Write FIRST
       if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
         if (client) {
-          const taskToUpdate = dailyTasks.find((t) => t.id === id);
-          if (taskToUpdate) {
-            try {
-              await client
-                .from('daily_tasks')
-                .update({ completed: !taskToUpdate.completed })
-                .eq('id', id);
-            } catch (e) {
-              console.warn('Failed to update task completion on cloud:', e);
+          try {
+            const { error } = await client
+              .from('daily_tasks')
+              .update({ completed: nextCompleted })
+              .eq('id', id);
+
+            if (error) {
+              console.error('[TaskContext] Error updating task completion in DB:', error);
+            }
+          } catch (e) {
+            console.warn('[TaskContext] Failed to write task completion to cloud:', e);
+          }
+        }
+      }
+
+      // 3. Only AFTER DB write resolves, evaluate if all current tasks for today are complete
+      if (nextCompleted) {
+        const todayTasks = updatedTasks.filter((t) => t.date_assigned === today);
+        const isAllComplete = todayTasks.length > 0 && todayTasks.every((t) => t.completed);
+
+        if (isAllComplete) {
+          triggerConfetti();
+          playSound('bonus');
+
+          // Update streak if today not already marked
+          if (settings.lastCompletedDate !== today) {
+            updateSettings({
+              lastCompletedDate: today,
+              streakCount: (settings.streakCount || 0) + 1,
+            });
+          }
+
+          // Continuous Bonus Pull via RPC (No one-time locks)
+          if (supabaseConfig.enabled && authUser.isAuthenticated) {
+            const client = getSupabaseClient(supabaseConfig);
+            if (client) {
+              try {
+                const { data: bonusTask, error } = await client.rpc('pull_bonus_task');
+                if (error) {
+                  console.warn('[TaskContext] pull_bonus_task RPC returned error:', error);
+                } else if (bonusTask) {
+                  console.log('[TaskContext] Continuous bonus task pulled:', bonusTask);
+                  // Append bonusTask to local state and refresh
+                  setDailyTasks((prev) => {
+                    if (prev.some((t) => t.id === bonusTask.id)) return prev;
+                    return [...prev, bonusTask];
+                  });
+                  setPoolTasks((prev) =>
+                    prev.filter((p) => p.title !== bonusTask.title && p.id !== bonusTask.id)
+                  );
+                  await refreshTasks();
+                } else {
+                  console.log('[TaskContext] Bonus pool is empty. All tasks completed.');
+                }
+              } catch (rpcErr) {
+                console.warn('[TaskContext] pull_bonus_task RPC failed:', rpcErr);
+              }
+            }
+          } else {
+            // Local/offline continuous pull
+            if (poolTasks.length > 0) {
+              const pulled = await pullBonusTaskToToday();
+              if (pulled) {
+                console.log('[TaskContext] Pulled local bonus task:', pulled);
+              }
             }
           }
         }
