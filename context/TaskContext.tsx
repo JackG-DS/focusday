@@ -683,30 +683,24 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Toggle Daily Task Completion
   const toggleDailyTask = useCallback(
     async (id: string) => {
-      let newlyCompletedTask: DailyTask | undefined;
-      let shouldTriggerBonus = false;
-
+      let isAllCompletedAfterToggle = false;
       const today = getTodayDateString();
 
       setDailyTasks((prev) => {
         const nextTasks = prev.map((task) => {
           if (task.id === id) {
-            const nextCompleted = !task.completed;
-            const updated = { ...task, completed: nextCompleted };
-            if (nextCompleted) {
-              newlyCompletedTask = updated;
-            }
-            return updated;
+            return { ...task, completed: !task.completed };
           }
           return task;
         });
 
         const currentToday = nextTasks.filter((t) => t.date_assigned === today);
         const allCompletedNow = currentToday.length > 0 && currentToday.every((t) => t.completed);
-        const alreadyTriggeredToday = settings.bonusTriggeredDates.includes(today);
+        const targetTask = prev.find((t) => t.id === id);
 
-        if (allCompletedNow && !alreadyTriggeredToday && newlyCompletedTask) {
-          shouldTriggerBonus = true;
+        // If toggled to completed and now all today's tasks are completed
+        if (!targetTask?.completed && allCompletedNow) {
+          isAllCompletedAfterToggle = true;
         }
 
         return nextTasks;
@@ -714,7 +708,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       playSound('complete');
 
-      if (shouldTriggerBonus) {
+      // 1. If today's list is completely done, automatically pull bonus task
+      if (isAllCompletedAfterToggle) {
         triggerConfetti();
         playSound('bonus');
 
@@ -724,16 +719,29 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           streakCount: settings.streakCount + 1,
         });
 
-        if (poolTasks.length > 0) {
-          setTimeout(async () => {
-            const unlockedTask = await pullBonusTaskToToday();
-            if (unlockedTask) {
-              setCelebrationModalTask(unlockedTask);
+        // If Supabase is connected & authenticated, call pull_bonus_task RPC and refresh
+        if (supabaseConfig.enabled && authUser.isAuthenticated) {
+          const client = getSupabaseClient(supabaseConfig);
+          if (client) {
+            try {
+              const { data: bonusTask, error } = await client.rpc('pull_bonus_task');
+              if (!error && bonusTask) {
+                console.log('[TaskContext] Auto pulled bonus task via RPC:', bonusTask);
+                await refreshTasks();
+              }
+            } catch (rpcErr) {
+              console.warn('[TaskContext] RPC pull_bonus_task error:', rpcErr);
             }
-          }, 400);
+          }
+        } else if (poolTasks.length > 0) {
+          // Local offline fallback
+          setTimeout(async () => {
+            await pullBonusTaskToToday();
+          }, 300);
         }
       }
 
+      // 2. Persist completion status to cloud
       if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
         if (client) {
@@ -759,6 +767,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       updateSettings,
       poolTasks,
       pullBonusTaskToToday,
+      refreshTasks,
       supabaseConfig,
       authUser.isAuthenticated,
     ]

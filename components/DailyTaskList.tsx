@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { TaskItem } from './TaskItem';
 import { useTaskContext } from '@/context/TaskContext';
-import { Sparkles, CalendarClock, Trophy, ArrowRight, X, ListTodo } from 'lucide-react';
+import { CalendarClock, Trophy, X, ListTodo, CheckCircle2 } from 'lucide-react';
 
 export const DailyTaskList: React.FC = () => {
   const {
@@ -27,7 +27,6 @@ export const DailyTaskList: React.FC = () => {
     rolloverReport,
     dismissRolloverReport,
     isTodayAllCompleted,
-    setActiveTab,
     poolTasks,
   } = useTaskContext();
 
@@ -83,27 +82,18 @@ export const DailyTaskList: React.FC = () => {
         </div>
       )}
 
-      {/* All Tasks Completed Banner */}
-      {isTodayAllCompleted && (
+      {/* Done for the Day Banner (When all daily tasks completed and bonus pool is empty) */}
+      {isTodayAllCompleted && poolTasks.length === 0 && (
         <div className="p-4 rounded-2xl bg-gradient-to-tr from-emerald-500/15 via-teal-500/10 to-emerald-500/5 border border-emerald-500/30 text-emerald-900 dark:text-emerald-200 text-center animate-slide-up shadow-xs">
           <div className="w-10 h-10 mx-auto mb-2 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow-md shadow-emerald-500/30">
             <Trophy className="w-5 h-5" />
           </div>
           <h3 className="font-bold text-sm sm:text-base text-emerald-950 dark:text-white">
-            Outstanding Work! All Tasks Done 🎉
+            You are done for the day! 🎉
           </h3>
           <p className="text-xs text-emerald-800/80 dark:text-emerald-300/80 mt-1 max-w-sm mx-auto">
-            You completed all of today&apos;s goals. Check your Bonus Pool for bonus challenges or rest up for tomorrow!
+            All daily priorities and bonus tasks are complete. Great job!
           </p>
-          {poolTasks.length > 0 && (
-            <button
-              onClick={() => setActiveTab('pool')}
-              className="mt-3 inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-xs transition-all"
-            >
-              <span>View Bonus Pool ({poolTasks.length})</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
       )}
 
