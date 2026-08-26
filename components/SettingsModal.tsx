@@ -230,6 +230,86 @@ begin
   where user_id = auth.uid()
     and completed = true;
 end;
+$$;
+
+-- 12. Helper: Clear all daily tasks for today
+create or replace function clear_all_daily_tasks()
+returns void
+language plpgsql
+security invoker
+as $$
+begin
+  delete from public.daily_tasks
+  where user_id = auth.uid()
+    and date_assigned = current_date;
+end;
+$$;
+
+-- 13. Helper: Automatically generate due recurring tasks for today
+create or replace function generate_due_recurring_tasks()
+returns setof public.daily_tasks
+language plpgsql
+security invoker
+as $$
+declare
+  v_current_dow integer;
+  v_max_order integer;
+  rec record;
+  v_new_task public.daily_tasks;
+begin
+  v_current_dow := extract(dow from current_date)::integer;
+
+  select coalesce(max(order_index), 0) into v_max_order
+  from public.daily_tasks
+  where user_id = auth.uid() and date_assigned = current_date;
+
+  for rec in
+    select r.id, r.title
+    from public.recurring_tasks r
+    where r.user_id = auth.uid()
+      and (
+        r.frequency = 'daily'
+        or (r.frequency = 'weekly' and r.day_of_week = v_current_dow)
+      )
+      and not exists (
+        select 1 from public.daily_tasks d
+        where d.user_id = auth.uid()
+          and d.date_assigned = current_date
+          and d.title = r.title
+      )
+  loop
+    v_max_order := v_max_order + 1;
+    insert into public.daily_tasks (user_id, title, completed, order_index, date_assigned)
+    values (auth.uid(), rec.title, false, v_max_order, current_date)
+    returning * into v_new_task;
+
+    return next v_new_task;
+  end loop;
+
+  return;
+end;
+$$;
+
+-- 14. Helper: Push template to today's daily tasks
+create or replace function push_template_to_daily(p_title text)
+returns public.daily_tasks
+language plpgsql
+security invoker
+as $$
+declare
+  v_max_order integer;
+  v_new_task public.daily_tasks;
+begin
+  select coalesce(max(order_index), 0) + 1 into v_max_order
+  from public.daily_tasks
+  where user_id = auth.uid() and date_assigned = current_date;
+
+  insert into public.daily_tasks (user_id, title, completed, order_index, date_assigned)
+  values (auth.uid(), p_title, false, v_max_order, current_date)
+  returning * into v_new_task;
+
+  return v_new_task;
+end;
 $$;`;
 
   const copySql = () => {

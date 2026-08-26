@@ -1,8 +1,9 @@
-import { DailyTask, PoolTask, UserSettings, SupabaseConfig } from './types';
+import { DailyTask, PoolTask, RecurringTask, UserSettings, SupabaseConfig } from './types';
 
 const STORAGE_KEYS = {
   DAILY_TASKS: 'antigravity_daily_tasks_v1',
   POOL_TASKS: 'antigravity_pool_tasks_v1',
+  RECURRING_TASKS: 'antigravity_recurring_tasks_v1',
   SETTINGS: 'antigravity_settings_v1',
   SUPABASE_CONFIG: 'antigravity_supabase_config_v1',
   SYNC_QUEUE: 'antigravity_sync_queue_v1',
@@ -119,6 +120,24 @@ export const INITIAL_POOL_TASKS = (userId: string): PoolTask[] => [
   },
 ];
 
+export const INITIAL_RECURRING_TASKS = (userId: string): RecurringTask[] => [
+  {
+    id: generateUUID(),
+    user_id: userId,
+    title: 'Morning 10-minute inbox & schedule review',
+    frequency: 'daily',
+    created_at: new Date().toISOString(),
+  },
+  {
+    id: generateUUID(),
+    user_id: userId,
+    title: 'Weekly planning & sprint retrospective',
+    frequency: 'weekly',
+    day_of_week: 1, // Monday
+    created_at: new Date().toISOString(),
+  },
+];
+
 export const DEFAULT_SETTINGS: UserSettings = {
   theme: 'system',
   confettiEnabled: true,
@@ -172,6 +191,26 @@ export const StorageService = {
     localStorage.setItem(STORAGE_KEYS.POOL_TASKS, JSON.stringify(tasks));
   },
 
+  getRecurringTasks(userId: string): RecurringTask[] {
+    if (typeof window === 'undefined') return [];
+    const raw = localStorage.getItem(STORAGE_KEYS.RECURRING_TASKS);
+    if (!raw) {
+      const initial = INITIAL_RECURRING_TASKS(userId);
+      this.saveRecurringTasks(initial);
+      return initial;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  },
+
+  saveRecurringTasks(tasks: RecurringTask[]): void {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(STORAGE_KEYS.RECURRING_TASKS, JSON.stringify(tasks));
+  },
+
   getSettings(): UserSettings {
     if (typeof window === 'undefined') return DEFAULT_SETTINGS;
     const raw = localStorage.getItem(STORAGE_KEYS.SETTINGS);
@@ -194,7 +233,6 @@ export const StorageService = {
     }
     const raw = localStorage.getItem(STORAGE_KEYS.SUPABASE_CONFIG);
     if (!raw) {
-      // Check if environment variables are provided via process.env
       const envUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
       const envKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
       return {
@@ -219,6 +257,7 @@ export const StorageService = {
     if (typeof window === 'undefined') return;
     localStorage.removeItem(STORAGE_KEYS.DAILY_TASKS);
     localStorage.removeItem(STORAGE_KEYS.POOL_TASKS);
+    localStorage.removeItem(STORAGE_KEYS.RECURRING_TASKS);
     localStorage.removeItem(STORAGE_KEYS.SETTINGS);
     localStorage.removeItem(STORAGE_KEYS.SYNC_QUEUE);
   },

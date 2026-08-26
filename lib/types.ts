@@ -15,6 +15,15 @@ export interface PoolTask {
   created_at: string;
 }
 
+export interface RecurringTask {
+  id: string;
+  user_id: string;
+  title: string;
+  frequency: 'daily' | 'weekly';
+  day_of_week?: number; // 0 = Sunday, 1 = Monday, ..., 6 = Saturday (for weekly)
+  created_at: string;
+}
+
 export type SyncStatus = 'offline' | 'idle' | 'syncing' | 'synced' | 'error';
 
 export interface SupabaseConfig {
@@ -41,7 +50,7 @@ export interface UserSettings {
   last_reset_date?: string; // YYYY-MM-DD
 }
 
-export type ActiveTab = 'today' | 'pool' | 'history' | 'settings';
+export type ActiveTab = 'today' | 'pool' | 'recurring' | 'history' | 'settings';
 
 export interface RolloverReport {
   date: string;

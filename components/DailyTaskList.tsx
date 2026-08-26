@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -18,7 +18,7 @@ import {
 } from '@dnd-kit/sortable';
 import { TaskItem } from './TaskItem';
 import { useTaskContext } from '@/context/TaskContext';
-import { CalendarClock, Trophy, X, ListTodo, CheckCircle2 } from 'lucide-react';
+import { CalendarClock, Trophy, X, ListTodo, Trash2, AlertTriangle } from 'lucide-react';
 
 export const DailyTaskList: React.FC = () => {
   const {
@@ -27,8 +27,12 @@ export const DailyTaskList: React.FC = () => {
     rolloverReport,
     dismissRolloverReport,
     isTodayAllCompleted,
+    clearAllDailyTasks,
     poolTasks,
   } = useTaskContext();
+
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [isClearing, setIsClearing] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -51,6 +55,16 @@ export const DailyTaskList: React.FC = () => {
     const { active, over } = event;
     if (over && active.id !== over.id) {
       reorderDailyTasks(String(active.id), String(over.id));
+    }
+  };
+
+  const handleConfirmClear = async () => {
+    setIsClearing(true);
+    try {
+      await clearAllDailyTasks();
+    } finally {
+      setIsClearing(false);
+      setShowClearConfirm(false);
     }
   };
 
@@ -94,6 +108,61 @@ export const DailyTaskList: React.FC = () => {
           <p className="text-xs text-emerald-800/80 dark:text-emerald-300/80 mt-1 max-w-sm mx-auto">
             All daily priorities and bonus tasks are complete. Great job!
           </p>
+        </div>
+      )}
+
+      {/* Top Header Row with Clear All Action */}
+      {todaysTasks.length > 0 && (
+        <div className="flex items-center justify-between px-1 pt-1">
+          <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Today&apos;s Focus ({todaysTasks.length})
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowClearConfirm(true)}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 px-2 py-1 rounded-lg transition-colors active:scale-95"
+            aria-label="Clear all tasks from today's list"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>Clear All</span>
+          </button>
+        </div>
+      )}
+
+      {/* Clear Confirmation Modal */}
+      {showClearConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-fade-in">
+          <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 border border-rose-500/30 rounded-3xl p-5 shadow-2xl text-center space-y-3.5 animate-scale-up">
+            <div className="w-12 h-12 mx-auto rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div className="space-y-1">
+              <h3 className="font-bold text-base text-slate-900 dark:text-white">
+                Clear All Daily Tasks?
+              </h3>
+              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+                Are you sure you want to clear all tasks from today&apos;s list? This cannot be undone.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowClearConfirm(false)}
+                disabled={isClearing}
+                className="flex-1 py-2 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmClear}
+                disabled={isClearing}
+                className="flex-1 py-2 text-xs font-bold rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition-colors"
+              >
+                {isClearing ? 'Clearing...' : 'Yes, Clear All'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

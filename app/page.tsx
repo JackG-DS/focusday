@@ -5,6 +5,7 @@ import { Header } from '@/components/Header';
 import { DailyTaskList } from '@/components/DailyTaskList';
 import { TaskInput } from '@/components/TaskInput';
 import { PoolManager } from '@/components/PoolManager';
+import { RecurringManager } from '@/components/RecurringManager';
 import { HistoryView } from '@/components/HistoryView';
 import { SettingsModal } from '@/components/SettingsModal';
 import { BonusCelebrationModal } from '@/components/BonusCelebrationModal';
@@ -61,14 +62,21 @@ export default function Home() {
           </div>
         )}
 
-        {/* Tab 3: History & Past Logs */}
+        {/* Tab 3: Recurring Tasks Management */}
+        {activeTab === 'recurring' && (
+          <div className="animate-fade-in">
+            <RecurringManager />
+          </div>
+        )}
+
+        {/* Tab 4: History & Past Logs */}
         {activeTab === 'history' && (
           <div className="animate-fade-in">
             <HistoryView />
           </div>
         )}
 
-        {/* Tab 4: Cloud Sync & Settings */}
+        {/* Tab 5: Cloud Sync & Settings */}
         {activeTab === 'settings' && (
           <div className="animate-fade-in">
             <SettingsModal />

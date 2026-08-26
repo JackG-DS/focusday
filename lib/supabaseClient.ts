@@ -171,3 +171,51 @@ export async function clearCompletedTasksRPC(
     error: error ? new Error(error.message) : null,
   };
 }
+
+// RPC Helper: Clear all daily tasks for today
+export async function clearAllDailyTasksRPC(
+  config?: SupabaseConfig
+): Promise<{ error: Error | null }> {
+  const client = getSupabaseClient(config);
+  if (!client) {
+    return { error: new Error('Supabase client is not configured') };
+  }
+
+  const { error } = await client.rpc('clear_all_daily_tasks');
+  return {
+    error: error ? new Error(error.message) : null,
+  };
+}
+
+// RPC Helper: Generate due recurring tasks for today
+export async function generateDueRecurringTasksRPC(
+  config?: SupabaseConfig
+): Promise<{ data: DailyTask[] | null; error: Error | null }> {
+  const client = getSupabaseClient(config);
+  if (!client) {
+    return { data: null, error: new Error('Supabase client is not configured') };
+  }
+
+  const { data, error } = await client.rpc('generate_due_recurring_tasks');
+  return {
+    data: (data as DailyTask[]) || null,
+    error: error ? new Error(error.message) : null,
+  };
+}
+
+// RPC Helper: Push template to today's daily tasks
+export async function pushTemplateToDailyRPC(
+  title: string,
+  config?: SupabaseConfig
+): Promise<{ data: DailyTask | null; error: Error | null }> {
+  const client = getSupabaseClient(config);
+  if (!client) {
+    return { data: null, error: new Error('Supabase client is not configured') };
+  }
+
+  const { data, error } = await client.rpc('push_template_to_daily', { p_title: title });
+  return {
+    data: (data as DailyTask) || null,
+    error: error ? new Error(error.message) : null,
+  };
+}

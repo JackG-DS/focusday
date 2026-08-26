@@ -6,6 +6,7 @@ import { arrayMove } from '@dnd-kit/sortable';
 import {
   DailyTask,
   PoolTask,
+  RecurringTask,
   UserSettings,
   SupabaseConfig,
   SyncStatus,
@@ -28,6 +29,8 @@ import {
   rolloverIncompleteTasksRPC,
   pullBonusTaskRPC,
   clearCompletedTasksRPC,
+  clearAllDailyTasksRPC,
+  generateDueRecurringTasksRPC,
 } from '@/lib/supabaseClient';
 
 interface TaskContextType {
@@ -63,12 +66,20 @@ interface TaskContextType {
   updateDailyTaskTitle: (id: string, newTitle: string) => Promise<void>;
   deleteDailyTask: (id: string) => Promise<void>;
   reorderDailyTasks: (activeId: string, overId: string) => Promise<void>;
+  clearAllDailyTasks: () => Promise<void>;
 
   // Bonus Pool Tasks
   poolTasks: PoolTask[];
   addPoolTask: (title: string) => Promise<void>;
   deletePoolTask: (id: string) => Promise<void>;
   pullBonusTaskToToday: (id?: string) => Promise<DailyTask | null>;
+
+  // Recurring Tasks
+  recurringTasks: RecurringTask[];
+  addRecurringTask: (title: string, frequency: 'daily' | 'weekly', day_of_week?: number) => Promise<void>;
+  updateRecurringTask: (id: string, updates: Partial<RecurringTask>) => Promise<void>;
+  deleteRecurringTask: (id: string) => Promise<void>;
+  pushTemplateToToday: (title: string) => Promise<boolean>;
 
   // Midnight Rollover & Streaks
   rolloverReport: RolloverReport | null;
@@ -110,6 +121,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [activeTab, setActiveTab] = useState<ActiveTab>('today');
   const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([]);
   const [poolTasks, setPoolTasks] = useState<PoolTask[]>([]);
+  const [recurringTasks, setRecurringTasks] = useState<RecurringTask[]>([]);
   const [settings, setSettings] = useState<UserSettings>(StorageService.getSettings());
   const [supabaseConfig, setSupabaseConfig] = useState<SupabaseConfig>(StorageService.getSupabaseConfig());
   const [rolloverReport, setRolloverReport] = useState<RolloverReport | null>(null);
@@ -238,7 +250,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   // =========================================================================
-  // Manual & On-Load Refresh Method + Auto Reset Check
+  // Manual & On-Load Refresh Method + Recurring Tasks Generation & Auto Reset
   // =========================================================================
   const refreshTasks = useCallback(async () => {
     if (!supabaseConfig.enabled || !supabaseConfig.url || !supabaseConfig.anonKey) {
@@ -297,7 +309,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.warn('[TaskContext] Optional user_settings fetch skipped:', settingsErr);
           }
 
-          // 2. Check Daily Auto-Reset Threshold (e.g. 04:00 AM)
+          // 2. Check Daily Auto-Reset Threshold
           const currentResetTime = settings.reset_time || '04:00';
           const currentLastReset = settings.last_reset_date || '';
 
@@ -311,17 +323,25 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }
 
-          // 3. Attempt server-side rollover RPC
+          // 3. Automatically generate due recurring tasks for today on cloud
+          try {
+            await generateDueRecurringTasksRPC(supabaseConfig);
+          } catch (recurringErr) {
+            console.warn('[TaskContext] Optional generateDueRecurringTasksRPC skipped:', recurringErr);
+          }
+
+          // 4. Attempt server-side rollover RPC
           try {
             await rolloverIncompleteTasksRPC(supabaseConfig);
           } catch (rpcErr) {
             console.warn('[TaskContext] Rollover RPC skipped:', rpcErr);
           }
 
-          // 4. Fetch daily_tasks and pool_tasks for current user
-          const [dailyRes, poolRes] = await Promise.all([
+          // 5. Fetch daily_tasks, pool_tasks, and recurring_tasks for current user
+          const [dailyRes, poolRes, recurringRes] = await Promise.all([
             client.from('daily_tasks').select('*').order('order_index', { ascending: true }),
             client.from('pool_tasks').select('*').order('created_at', { ascending: false }),
+            client.from('recurring_tasks').select('*').order('created_at', { ascending: false }),
           ]);
 
           if (dailyRes.error) {
@@ -335,10 +355,12 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           const cloudDaily: DailyTask[] = dailyRes.data || [];
           const cloudPool: PoolTask[] = poolRes.data || [];
+          const cloudRecurring: RecurringTask[] = recurringRes.data || [];
 
           console.log('[TaskContext] Tasks fetched:', {
             dailyCount: cloudDaily.length,
             poolCount: cloudPool.length,
+            recurringCount: cloudRecurring.length,
           });
 
           if (cloudDaily.length > 0) {
@@ -353,6 +375,13 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           } else if (poolTasks.length > 0) {
             const toUpload = poolTasks.map((t) => ({ ...t, user_id: targetUserId }));
             await client.from('pool_tasks').insert(toUpload);
+          }
+
+          if (cloudRecurring.length > 0) {
+            setRecurringTasks(cloudRecurring);
+          } else if (recurringTasks.length > 0) {
+            const toUpload = recurringTasks.map((t) => ({ ...t, user_id: targetUserId }));
+            await client.from('recurring_tasks').insert(toUpload);
           }
 
           setSyncStatus('synced');
@@ -374,6 +403,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     userId,
     dailyTasks,
     poolTasks,
+    recurringTasks,
     settings.reset_time,
     settings.last_reset_date,
     checkShouldReset,
@@ -393,6 +423,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 1. Load Local State synchronously
     let loadedDaily = StorageService.getDailyTasks(localUid);
     const loadedPool = StorageService.getPoolTasks(localUid);
+    const loadedRecurring = StorageService.getRecurringTasks(localUid);
     const loadedSettings = StorageService.getSettings();
     const loadedSupabase = StorageService.getSupabaseConfig();
     const today = getTodayDateString();
@@ -403,6 +434,31 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       loadedSettings.last_reset_date = today;
       StorageService.saveDailyTasks(loadedDaily);
       StorageService.saveSettings(loadedSettings);
+    }
+
+    // Local Generation of Due Recurring Tasks for Today
+    const currentDow = new Date().getDay();
+    const existingTitles = new Set(
+      loadedDaily.filter((t) => t.date_assigned === today).map((t) => t.title.toLowerCase().trim())
+    );
+    const todayTasks = loadedDaily.filter((t) => t.date_assigned === today);
+    let maxOrder = todayTasks.length > 0 ? Math.max(...todayTasks.map((t) => t.order_index)) : -1;
+
+    for (const r of loadedRecurring) {
+      const isDue = r.frequency === 'daily' || (r.frequency === 'weekly' && r.day_of_week === currentDow);
+      if (isDue && !existingTitles.has(r.title.toLowerCase().trim())) {
+        maxOrder += 1;
+        loadedDaily.push({
+          id: generateUUID(),
+          user_id: localUid,
+          title: r.title,
+          completed: false,
+          order_index: maxOrder,
+          date_assigned: today,
+          created_at: new Date().toISOString(),
+        });
+        existingTitles.add(r.title.toLowerCase().trim());
+      }
     }
 
     // Local Midnight Rollover
@@ -463,6 +519,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     setDailyTasks(loadedDaily);
     setPoolTasks(loadedPool);
+    setRecurringTasks(loadedRecurring);
     setSettings(loadedSettings);
     setSupabaseConfig(loadedSupabase);
     setIsClientReady(true);
@@ -549,6 +606,12 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!isClientReady) return;
     StorageService.savePoolTasks(poolTasks);
   }, [poolTasks, isClientReady]);
+
+  // Save Recurring Tasks to Local Storage
+  useEffect(() => {
+    if (!isClientReady) return;
+    StorageService.saveRecurringTasks(recurringTasks);
+  }, [recurringTasks, isClientReady]);
 
   // Sign In Handler
   const handleSignIn = useCallback(
@@ -712,6 +775,21 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     },
     [dailyTasks, userId, authUser, supabaseConfig]
   );
+
+  // Clear All Tasks from Today's Daily List
+  const clearAllDailyTasks = useCallback(async () => {
+    const today = getTodayDateString();
+    setDailyTasks((prev) => prev.filter((t) => t.date_assigned !== today));
+
+    if (supabaseConfig.enabled && authUser.isAuthenticated) {
+      try {
+        await clearAllDailyTasksRPC(supabaseConfig);
+        await refreshTasks();
+      } catch (err) {
+        console.warn('[TaskContext] clear_all_daily_tasks RPC error:', err);
+      }
+    }
+  }, [supabaseConfig, authUser.isAuthenticated, refreshTasks]);
 
   // Pull Bonus Task helper (Guarded against null/empty result)
   const pullBonusTaskToToday = useCallback(
@@ -1021,6 +1099,110 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [supabaseConfig, authUser.isAuthenticated]
   );
 
+  // =========================================================================
+  // Recurring Tasks CRUD
+  // =========================================================================
+  const addRecurringTask = useCallback(
+    async (title: string, frequency: 'daily' | 'weekly', day_of_week?: number) => {
+      if (!title.trim()) return;
+      const currentActiveUserId = authUser.isAuthenticated ? authUser.id : userId;
+
+      const newRecurring: RecurringTask = {
+        id: generateUUID(),
+        user_id: currentActiveUserId,
+        title: title.trim(),
+        frequency,
+        day_of_week: frequency === 'weekly' ? (day_of_week ?? 1) : undefined,
+        created_at: new Date().toISOString(),
+      };
+
+      setRecurringTasks((prev) => [newRecurring, ...prev]);
+
+      if (supabaseConfig.enabled && authUser.isAuthenticated) {
+        const client = getSupabaseClient(supabaseConfig);
+        if (client) {
+          try {
+            await client.from('recurring_tasks').insert(newRecurring);
+          } catch (e) {
+            console.warn('[TaskContext] Failed to insert recurring task to cloud:', e);
+          }
+        }
+      }
+    },
+    [userId, authUser, supabaseConfig]
+  );
+
+  const updateRecurringTask = useCallback(
+    async (id: string, updates: Partial<RecurringTask>) => {
+      setRecurringTasks((prev) =>
+        prev.map((r) => (r.id === id ? { ...r, ...updates } : r))
+      );
+
+      if (supabaseConfig.enabled && authUser.isAuthenticated) {
+        const client = getSupabaseClient(supabaseConfig);
+        if (client) {
+          try {
+            await client.from('recurring_tasks').update(updates).eq('id', id);
+          } catch (e) {
+            console.warn('[TaskContext] Failed to update recurring task on cloud:', e);
+          }
+        }
+      }
+    },
+    [supabaseConfig, authUser.isAuthenticated]
+  );
+
+  const deleteRecurringTask = useCallback(
+    async (id: string) => {
+      setRecurringTasks((prev) => prev.filter((r) => r.id !== id));
+
+      if (supabaseConfig.enabled && authUser.isAuthenticated) {
+        const client = getSupabaseClient(supabaseConfig);
+        if (client) {
+          try {
+            await client.from('recurring_tasks').delete().eq('id', id);
+          } catch (e) {
+            console.warn('[TaskContext] Failed to delete recurring task on cloud:', e);
+          }
+        }
+      }
+    },
+    [supabaseConfig, authUser.isAuthenticated]
+  );
+
+  // Push Recurring Template to Today's Daily List
+  const pushTemplateToToday = useCallback(
+    async (title: string): Promise<boolean> => {
+      if (!title.trim()) return false;
+      const trimmed = title.trim();
+
+      if (supabaseConfig.enabled && authUser.isAuthenticated) {
+        const client = getSupabaseClient(supabaseConfig);
+        if (client) {
+          try {
+            const { data: newTask, error } = await client.rpc('push_template_to_daily', {
+              p_title: trimmed,
+            });
+            if (!error) {
+              if (newTask) {
+                setDailyTasks((prev) => [...prev, newTask]);
+              }
+              await refreshTasks();
+              return true;
+            }
+          } catch (e) {
+            console.warn('[TaskContext] push_template_to_daily error:', e);
+          }
+        }
+      }
+
+      // Local/offline fallback
+      await addDailyTask(trimmed);
+      return true;
+    },
+    [supabaseConfig, authUser.isAuthenticated, refreshTasks, addDailyTask]
+  );
+
   // Dismiss Modals
   const dismissRolloverReport = useCallback(() => {
     setRolloverReport(null);
@@ -1037,6 +1219,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const today = getTodayDateString();
     setDailyTasks(StorageService.getDailyTasks(uid));
     setPoolTasks(StorageService.getPoolTasks(uid));
+    setRecurringTasks(StorageService.getRecurringTasks(uid));
     setSettings(StorageService.getSettings());
     setSyncStatus('idle');
     setIsSyncing(false);
@@ -1071,10 +1254,16 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateDailyTaskTitle,
         deleteDailyTask,
         reorderDailyTasks,
+        clearAllDailyTasks,
         poolTasks,
         addPoolTask,
         deletePoolTask,
         pullBonusTaskToToday,
+        recurringTasks,
+        addRecurringTask,
+        updateRecurringTask,
+        deleteRecurringTask,
+        pushTemplateToToday,
         rolloverReport,
         dismissRolloverReport,
         streakCount: settings.streakCount || 1,
