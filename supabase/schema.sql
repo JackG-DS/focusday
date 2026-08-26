@@ -1,7 +1,7 @@
 -- ====================================================================
 -- SUPABASE SCHEMA, RLS POLICIES & HELPER FUNCTIONS
 -- Project: FocusDay To-Do List Progressive Web App
--- Features: Daily Tasks, Bonus Pool, Recurring Tasks, User Settings & RPCs
+-- Features: Daily Tasks, Bonus Pool, Recurring Tasks, Expandable Notes & RPCs
 -- ====================================================================
 
 -- 1. Create Daily Tasks Table
@@ -9,6 +9,7 @@ create table if not exists public.daily_tasks (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
   title text not null,
+  notes text,
   completed boolean not null default false,
   order_index integer not null default 0,
   date_assigned date not null default current_date,
@@ -20,6 +21,7 @@ create table if not exists public.pool_tasks (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
   title text not null,
+  notes text,
   created_at timestamptz not null default timezone('utc'::text, now())
 );
 
@@ -28,6 +30,7 @@ create table if not exists public.recurring_tasks (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
   title text not null,
+  notes text,
   frequency text not null check (frequency in ('daily', 'weekly')),
   day_of_week integer check (day_of_week between 0 and 6), -- 0 = Sun, 1 = Mon ... 6 = Sat
   created_at timestamptz not null default timezone('utc'::text, now())
@@ -156,7 +159,7 @@ begin
 end;
 $$;
 
--- Helper: Pull one random pool task and move it into today's daily list
+-- Helper: Pull one random pool task and move it into today's daily list (preserving notes)
 create or replace function pull_bonus_task()
 returns public.daily_tasks
 language plpgsql
@@ -165,10 +168,11 @@ as $$
 declare
   v_pool_id uuid;
   v_title text;
+  v_notes text;
   v_new_task public.daily_tasks;
   v_max_order integer;
 begin
-  select id, title into v_pool_id, v_title
+  select id, title, notes into v_pool_id, v_title, v_notes
   from public.pool_tasks
   where user_id = auth.uid()
   order by random()
@@ -182,8 +186,8 @@ begin
   from public.daily_tasks
   where user_id = auth.uid() and date_assigned = current_date;
 
-  insert into public.daily_tasks (user_id, title, completed, order_index, date_assigned)
-  values (auth.uid(), v_title, false, v_max_order, current_date)
+  insert into public.daily_tasks (user_id, title, notes, completed, order_index, date_assigned)
+  values (auth.uid(), v_title, v_notes, false, v_max_order, current_date)
   returning * into v_new_task;
 
   delete from public.pool_tasks where id = v_pool_id;
@@ -218,7 +222,7 @@ begin
 end;
 $$;
 
--- Helper: Automatically generate due recurring tasks for today
+-- Helper: Automatically generate due recurring tasks for today (preserving notes)
 create or replace function generate_due_recurring_tasks()
 returns setof public.daily_tasks
 language plpgsql
@@ -230,7 +234,6 @@ declare
   rec record;
   v_new_task public.daily_tasks;
 begin
-  -- Extract day of week: 0 = Sunday, 1 = Monday ... 6 = Saturday
   v_current_dow := extract(dow from current_date)::integer;
 
   select coalesce(max(order_index), 0) into v_max_order
@@ -238,7 +241,7 @@ begin
   where user_id = auth.uid() and date_assigned = current_date;
 
   for rec in
-    select r.id, r.title
+    select r.id, r.title, r.notes
     from public.recurring_tasks r
     where r.user_id = auth.uid()
       and (
@@ -253,8 +256,8 @@ begin
       )
   loop
     v_max_order := v_max_order + 1;
-    insert into public.daily_tasks (user_id, title, completed, order_index, date_assigned)
-    values (auth.uid(), rec.title, false, v_max_order, current_date)
+    insert into public.daily_tasks (user_id, title, notes, completed, order_index, date_assigned)
+    values (auth.uid(), rec.title, rec.notes, false, v_max_order, current_date)
     returning * into v_new_task;
 
     return next v_new_task;
@@ -264,8 +267,8 @@ begin
 end;
 $$;
 
--- Helper: Push a specific recurring template to today's daily tasks
-create or replace function push_template_to_daily(p_title text)
+-- Helper: Push template to today's daily tasks (preserving notes)
+create or replace function push_template_to_daily(p_title text, p_notes text default null)
 returns public.daily_tasks
 language plpgsql
 security invoker
@@ -278,11 +281,10 @@ begin
   from public.daily_tasks
   where user_id = auth.uid() and date_assigned = current_date;
 
-  insert into public.daily_tasks (user_id, title, completed, order_index, date_assigned)
-  values (auth.uid(), p_title, false, v_max_order, current_date)
+  insert into public.daily_tasks (user_id, title, notes, completed, order_index, date_assigned)
+  values (auth.uid(), p_title, p_notes, false, v_max_order, current_date)
   returning * into v_new_task;
 
   return v_new_task;
 end;
 $$;
-

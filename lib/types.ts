@@ -2,6 +2,7 @@ export interface DailyTask {
   id: string;
   user_id: string;
   title: string;
+  notes?: string | null;
   completed: boolean;
   order_index: number;
   date_assigned: string; // YYYY-MM-DD
@@ -12,6 +13,7 @@ export interface PoolTask {
   id: string;
   user_id: string;
   title: string;
+  notes?: string | null;
   created_at: string;
 }
 
@@ -19,6 +21,7 @@ export interface RecurringTask {
   id: string;
   user_id: string;
   title: string;
+  notes?: string | null;
   frequency: 'daily' | 'weekly';
   day_of_week?: number; // 0 = Sunday, 1 = Monday, ..., 6 = Saturday (for weekly)
   created_at: string;

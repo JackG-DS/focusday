@@ -62,25 +62,26 @@ interface TaskContextType {
   todaysTasks: DailyTask[];
   historyDates: string[];
   getTasksForDate: (date: string) => DailyTask[];
-  addDailyTask: (title: string, date?: string) => Promise<void>;
+  addDailyTask: (title: string, notes?: string | null, date?: string) => Promise<void>;
   toggleDailyTask: (id: string) => Promise<void>;
   updateDailyTaskTitle: (id: string, newTitle: string) => Promise<void>;
+  updateDailyTaskNotes: (id: string, newNotes: string | null) => Promise<void>;
   deleteDailyTask: (id: string) => Promise<void>;
   reorderDailyTasks: (activeId: string, overId: string) => Promise<void>;
   clearAllDailyTasks: () => Promise<void>;
 
   // Bonus Pool Tasks
   poolTasks: PoolTask[];
-  addPoolTask: (title: string) => Promise<void>;
+  addPoolTask: (title: string, notes?: string | null) => Promise<void>;
   deletePoolTask: (id: string) => Promise<void>;
   pullBonusTaskToToday: (id?: string) => Promise<DailyTask | null>;
 
   // Recurring Tasks
   recurringTasks: RecurringTask[];
-  addRecurringTask: (title: string, frequency: 'daily' | 'weekly', day_of_week?: number) => Promise<void>;
+  addRecurringTask: (title: string, frequency: 'daily' | 'weekly', day_of_week?: number, notes?: string | null) => Promise<void>;
   updateRecurringTask: (id: string, updates: Partial<RecurringTask>) => Promise<void>;
   deleteRecurringTask: (id: string) => Promise<void>;
-  pushTemplateToToday: (title: string) => Promise<boolean>;
+  pushTemplateToToday: (title: string, notes?: string | null) => Promise<boolean>;
 
   // Midnight Rollover & Streaks
   rolloverReport: RolloverReport | null;
@@ -342,7 +343,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
           const cloudDaily: DailyTask[] = dailyRes.data || [];
           const cloudPool: PoolTask[] = poolRes.data || [];
-          const cloudRecurring: RecurringTask[] = recurringRes.data || [];
+          const cloudRecurring: RecurringTask[] = recurringRes?.data || [];
 
           console.log('[TaskContext] Tasks fetched from cloud:', {
             dailyCount: cloudDaily.length,
@@ -427,6 +428,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           id: generateUUID(),
           user_id: localUid,
           title: r.title,
+          notes: r.notes || null,
           completed: false,
           order_index: maxOrder,
           date_assigned: today,
@@ -731,9 +733,9 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Math.round((completedCount / todaysTasks.length) * 100);
   }, [todaysTasks]);
 
-  // Add Daily Task
+  // Add Daily Task (with Notes)
   const addDailyTask = useCallback(
-    async (title: string, date?: string) => {
+    async (title: string, notes?: string | null, date?: string) => {
       if (!title.trim()) return;
       const targetDate = date || getTodayDateString();
       const existingInDate = dailyTasks.filter((t) => t.date_assigned === targetDate);
@@ -747,6 +749,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: generateUUID(),
         user_id: currentActiveUserId,
         title: title.trim(),
+        notes: notes?.trim() || null,
         completed: false,
         order_index: maxOrder + 1,
         date_assigned: targetDate,
@@ -850,6 +853,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: generateUUID(),
         user_id: currentActiveUserId,
         title: chosenPoolTask.title,
+        notes: chosenPoolTask.notes || null,
         completed: false,
         order_index: maxOrder + 1,
         date_assigned: today,
@@ -1012,6 +1016,30 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [supabaseConfig, authUser.isAuthenticated]
   );
 
+  // Update Daily Task Notes
+  const updateDailyTaskNotes = useCallback(
+    async (id: string, newNotes: string | null) => {
+      const formattedNotes = newNotes?.trim() ? newNotes.trim() : null;
+      setDailyTasks((prev) => {
+        const next = prev.map((task) => (task.id === id ? { ...task, notes: formattedNotes } : task));
+        StorageService.saveDailyTasks(next);
+        return next;
+      });
+
+      if (supabaseConfig.enabled && authUser.isAuthenticated) {
+        const client = getSupabaseClient(supabaseConfig);
+        if (client) {
+          try {
+            await client.from('daily_tasks').update({ notes: formattedNotes }).eq('id', id);
+          } catch (e) {
+            console.warn('Failed to update task notes on cloud:', e);
+          }
+        }
+      }
+    },
+    [supabaseConfig, authUser.isAuthenticated]
+  );
+
   // Delete Daily Task
   const deleteDailyTask = useCallback(
     async (id: string) => {
@@ -1075,9 +1103,9 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [dailyTasks, supabaseConfig, authUser.isAuthenticated]
   );
 
-  // Add Pool Task
+  // Add Pool Task (with Notes)
   const addPoolTask = useCallback(
-    async (title: string) => {
+    async (title: string, notes?: string | null) => {
       if (!title.trim()) return;
       const currentActiveUserId = authUser.isAuthenticated ? authUser.id : userId;
 
@@ -1085,6 +1113,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: generateUUID(),
         user_id: currentActiveUserId,
         title: title.trim(),
+        notes: notes?.trim() || null,
         created_at: new Date().toISOString(),
       };
 
@@ -1132,10 +1161,10 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   );
 
   // =========================================================================
-  // Recurring Tasks CRUD
+  // Recurring Tasks CRUD (with Notes)
   // =========================================================================
   const addRecurringTask = useCallback(
-    async (title: string, frequency: 'daily' | 'weekly', day_of_week?: number) => {
+    async (title: string, frequency: 'daily' | 'weekly', day_of_week?: number, notes?: string | null) => {
       if (!title.trim()) return;
       const currentActiveUserId = authUser.isAuthenticated ? authUser.id : userId;
 
@@ -1143,6 +1172,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         id: generateUUID(),
         user_id: currentActiveUserId,
         title: title.trim(),
+        notes: notes?.trim() || null,
         frequency,
         day_of_week: frequency === 'weekly' ? (day_of_week ?? 1) : undefined,
         created_at: new Date().toISOString(),
@@ -1212,11 +1242,12 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [supabaseConfig, authUser.isAuthenticated]
   );
 
-  // Push Recurring Template to Today's Daily List
+  // Push Recurring Template to Today's Daily List (Preserving Notes)
   const pushTemplateToToday = useCallback(
-    async (title: string): Promise<boolean> => {
+    async (title: string, notes?: string | null): Promise<boolean> => {
       if (!title.trim()) return false;
       const trimmed = title.trim();
+      const trimmedNotes = notes?.trim() || null;
 
       if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
@@ -1224,6 +1255,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           try {
             const { data: newTask, error } = await client.rpc('push_template_to_daily', {
               p_title: trimmed,
+              p_notes: trimmedNotes,
             });
             if (!error) {
               if (newTask) {
@@ -1243,7 +1275,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Local/offline fallback
-      await addDailyTask(trimmed);
+      await addDailyTask(trimmed, trimmedNotes);
       return true;
     },
     [supabaseConfig, authUser.isAuthenticated, refreshTasks, addDailyTask]
@@ -1298,6 +1330,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         addDailyTask,
         toggleDailyTask,
         updateDailyTaskTitle,
+        updateDailyTaskNotes,
         deleteDailyTask,
         reorderDailyTasks,
         clearAllDailyTasks,

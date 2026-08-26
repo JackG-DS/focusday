@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Repeat,
   Plus,
@@ -14,6 +14,12 @@ import {
   CalendarPlus,
   Check,
   RefreshCw,
+  FileText,
+  ChevronDown,
+  ChevronUp,
+  Edit3,
+  Save,
+  X,
 } from 'lucide-react';
 import { useTaskContext } from '@/context/TaskContext';
 import { RecurringTask } from '@/lib/types';
@@ -32,6 +38,7 @@ export const RecurringManager: React.FC = () => {
   const {
     recurringTasks,
     addRecurringTask,
+    updateRecurringTask,
     deleteRecurringTask,
     pushTemplateToToday,
     addDailyTask,
@@ -39,39 +46,71 @@ export const RecurringManager: React.FC = () => {
   } = useTaskContext();
 
   const [title, setTitle] = useState('');
+  const [notes, setNotes] = useState('');
+  const [showNotesInput, setShowNotesInput] = useState(false);
   const [mode, setMode] = useState<'daily' | 'weekly' | 'once'>('daily');
   const [selectedDow, setSelectedDow] = useState<number>(1); // Monday default
   const [addedNotice, setAddedNotice] = useState<string | null>(null);
   const [pushingTaskId, setPushingTaskId] = useState<string | null>(null);
   const [recentlyPushedIds, setRecentlyPushedIds] = useState<Record<string, boolean>>({});
 
+  // Expanded items in list
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
+  const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
+  const [editNotesValue, setEditNotesValue] = useState('');
+  const editNotesTextareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (editingNotesId && editNotesTextareaRef.current) {
+      editNotesTextareaRef.current.focus();
+    }
+  }, [editingNotesId]);
+
+  const toggleExpand = (id: string) => {
+    setExpandedIds((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const startEditNotes = (task: RecurringTask) => {
+    setEditingNotesId(task.id);
+    setEditNotesValue(task.notes || '');
+    setExpandedIds((prev) => ({ ...prev, [task.id]: true }));
+  };
+
+  const saveEditedNotes = async (id: string) => {
+    await updateRecurringTask(id, { notes: editNotesValue.trim() || null });
+    setEditingNotesId(null);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) return;
 
     const trimmed = title.trim();
+    const trimmedNotes = notes.trim() || null;
 
     if (mode === 'once') {
       // Add once right now into today's list
-      await addDailyTask(trimmed);
+      await addDailyTask(trimmed, trimmedNotes);
       setAddedNotice(`Added "${trimmed}" to today's daily focus!`);
     } else if (mode === 'daily') {
-      await addRecurringTask(trimmed, 'daily');
+      await addRecurringTask(trimmed, 'daily', undefined, trimmedNotes);
       setAddedNotice(`Added "${trimmed}" as a Daily recurring routine!`);
     } else if (mode === 'weekly') {
-      await addRecurringTask(trimmed, 'weekly', selectedDow);
+      await addRecurringTask(trimmed, 'weekly', selectedDow, trimmedNotes);
       const dayName = DAYS_OF_WEEK.find((d) => d.value === selectedDow)?.label || 'selected day';
       setAddedNotice(`Added "${trimmed}" to recur every ${dayName}!`);
     }
 
     setTitle('');
+    setNotes('');
+    setShowNotesInput(false);
     setTimeout(() => setAddedNotice(null), 3500);
   };
 
   const handlePushToToday = async (task: RecurringTask) => {
     setPushingTaskId(task.id);
     try {
-      await pushTemplateToToday(task.title);
+      await pushTemplateToToday(task.title, task.notes);
       setRecentlyPushedIds((prev) => ({ ...prev, [task.id]: true }));
       setAddedNotice(`Pushed "${task.title}" to today's daily tasks!`);
       setTimeout(() => {
@@ -137,6 +176,50 @@ export const RecurringManager: React.FC = () => {
               placeholder="e.g., Morning workout, Team standup, Review analytics..."
               className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
             />
+          </div>
+
+          {/* Optional Notes Toggle / Input */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setShowNotesInput(!showNotesInput)}
+                className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>
+                  {showNotesInput
+                    ? 'Hide Template Notes'
+                    : notes.trim()
+                    ? 'Edit Template Notes'
+                    : '+ Add Details / Checklist (Optional)'}
+                </span>
+                {showNotesInput ? (
+                  <ChevronUp className="w-3 h-3" />
+                ) : (
+                  <ChevronDown className="w-3 h-3" />
+                )}
+              </button>
+              {notes && showNotesInput && (
+                <button
+                  type="button"
+                  onClick={() => setNotes('')}
+                  className="text-[11px] text-slate-400 hover:text-red-500"
+                >
+                  Clear notes
+                </button>
+              )}
+            </div>
+
+            {showNotesInput && (
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={2}
+                placeholder="Add sub-items, checklist items, links, or context..."
+                className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl p-2.5 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 leading-relaxed resize-y animate-slide-up"
+              />
+            )}
           </div>
 
           {/* Frequency Selector */}
@@ -260,66 +343,178 @@ export const RecurringManager: React.FC = () => {
             {recurringTasks.map((task) => {
               const isPushing = pushingTaskId === task.id;
               const isRecentlyPushed = Boolean(recentlyPushedIds[task.id]);
+              const isExpanded = Boolean(expandedIds[task.id]);
+              const isEditingNotes = editingNotesId === task.id;
+              const hasNotes = Boolean(task.notes && task.notes.trim().length > 0);
 
               return (
                 <div
                   key={task.id}
-                  className="p-3.5 bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-2xl shadow-xs flex items-center justify-between gap-3 group transition-all"
+                  className="bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-2xl shadow-xs transition-all overflow-hidden"
                 >
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white truncate">
-                      {task.title}
-                    </p>
-                    <div className="flex items-center gap-1.5 mt-1">
-                      <span
-                        className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
-                          task.frequency === 'daily'
-                            ? 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300'
-                            : 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300'
+                  {/* Template Header Row */}
+                  <div className="p-3.5 flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <p className="text-xs sm:text-sm font-semibold text-slate-900 dark:text-white truncate">
+                          {task.title}
+                        </p>
+
+                        {/* Note badge indicator */}
+                        {hasNotes && !isExpanded && (
+                          <button
+                            type="button"
+                            onClick={() => toggleExpand(task.id)}
+                            className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                          >
+                            <FileText className="w-3 h-3 text-indigo-500" />
+                            <span>Notes</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <span
+                          className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                            task.frequency === 'daily'
+                              ? 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300'
+                              : 'bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300'
+                          }`}
+                        >
+                          {task.frequency === 'daily'
+                            ? 'Every Day'
+                            : `Every ${getDayName(task.day_of_week)}`}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-1 shrink-0">
+                      {/* Expand / Collapse Chevron */}
+                      <button
+                        type="button"
+                        onClick={() => toggleExpand(task.id)}
+                        aria-label={isExpanded ? 'Collapse notes' : 'Expand notes'}
+                        className={`p-1.5 rounded-lg text-xs font-semibold flex items-center transition-colors ${
+                          isExpanded || hasNotes
+                            ? 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60'
+                            : 'text-slate-400 hover:text-slate-600 hover:bg-slate-100'
                         }`}
+                        title={isExpanded ? 'Collapse notes' : 'View / Edit notes'}
                       >
-                        {task.frequency === 'daily'
-                          ? 'Every Day'
-                          : `Every ${getDayName(task.day_of_week)}`}
-                      </span>
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4 text-indigo-500" />
+                        ) : (
+                          <ChevronDown className={`w-4 h-4 ${hasNotes ? 'text-indigo-500' : ''}`} />
+                        )}
+                      </button>
+
+                      {/* Quick Action: Add to Today (Copies Template & Notes) */}
+                      <button
+                        type="button"
+                        onClick={() => handlePushToToday(task)}
+                        disabled={isPushing}
+                        className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-xl border transition-all active:scale-95 ${
+                          isRecentlyPushed
+                            ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
+                            : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-300 hover:border-indigo-300'
+                        }`}
+                        aria-label={`Add ${task.title} to today's list`}
+                      >
+                        {isPushing ? (
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-500" />
+                        ) : isRecentlyPushed ? (
+                          <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        ) : (
+                          <CalendarPlus className="w-3.5 h-3.5 text-indigo-500" />
+                        )}
+                        <span>
+                          {isPushing ? 'Adding...' : isRecentlyPushed ? 'Added!' : '+ Today'}
+                        </span>
+                      </button>
+
+                      {/* Delete Recurring Task */}
+                      <button
+                        type="button"
+                        onClick={() => deleteRecurringTask(task.id)}
+                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors"
+                        aria-label={`Delete recurring task ${task.title}`}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-1 shrink-0">
-                    {/* Quick Action: Add to Today */}
-                    <button
-                      type="button"
-                      onClick={() => handlePushToToday(task)}
-                      disabled={isPushing}
-                      className={`inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded-xl border transition-all active:scale-95 ${
-                        isRecentlyPushed
-                          ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
-                          : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-300 hover:border-indigo-300'
-                      }`}
-                      aria-label={`Add ${task.title} to today's list`}
-                    >
-                      {isPushing ? (
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-500" />
-                      ) : isRecentlyPushed ? (
-                        <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  {/* Expandable Notes Drawer */}
+                  {isExpanded && (
+                    <div className="px-4 pb-3.5 pt-1 border-t border-slate-100 dark:border-slate-700/50 animate-slide-up">
+                      {isEditingNotes ? (
+                        <div className="space-y-2">
+                          <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                            <span className="flex items-center gap-1">
+                              <FileText className="w-3 h-3 text-indigo-500" />
+                              <span>Editing Template Notes</span>
+                            </span>
+                            <span className="text-[10px] text-slate-400">
+                              Will copy to daily tasks on schedule
+                            </span>
+                          </div>
+                          <textarea
+                            ref={editNotesTextareaRef}
+                            value={editNotesValue}
+                            onChange={(e) => setEditNotesValue(e.target.value)}
+                            rows={3}
+                            placeholder="Add sub-items, checklist items, links, or notes..."
+                            className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-900 border border-indigo-500/70 rounded-xl p-2.5 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500 leading-relaxed resize-y"
+                          />
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setEditingNotesId(null)}
+                              className="px-2.5 py-1 text-xs font-semibold rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => saveEditedNotes(task.id)}
+                              className="px-3 py-1 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all flex items-center gap-1"
+                            >
+                              <Save className="w-3 h-3" />
+                              <span>Save Notes</span>
+                            </button>
+                          </div>
+                        </div>
                       ) : (
-                        <CalendarPlus className="w-3.5 h-3.5 text-indigo-500" />
+                        <div className="space-y-2">
+                          {hasNotes ? (
+                            <div
+                              onClick={() => startEditNotes(task)}
+                              className="cursor-pointer group/notes rounded-xl bg-slate-50/80 dark:bg-slate-900/60 p-3 border border-slate-200/60 dark:border-slate-700/60 hover:border-indigo-500/40 transition-all"
+                              title="Click to edit notes"
+                            >
+                              <div className="whitespace-pre-wrap text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                                {task.notes}
+                              </div>
+                              <div className="mt-2 pt-1 border-t border-slate-200/40 dark:border-slate-700/40 flex items-center justify-between text-[11px] text-slate-400">
+                                <span className="flex items-center gap-1 text-indigo-600 dark:text-indigo-400 font-medium">
+                                  <Edit3 className="w-3 h-3" /> Click to edit template notes
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => startEditNotes(task)}
+                              className="w-full py-2.5 px-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/30 text-xs font-semibold text-slate-500 hover:text-indigo-600 hover:border-indigo-500 transition-all flex items-center justify-center gap-1.5"
+                            >
+                              <Plus className="w-3.5 h-3.5" />
+                              <span>Add details, list items, or template notes</span>
+                            </button>
+                          )}
+                        </div>
                       )}
-                      <span>
-                        {isPushing ? 'Adding...' : isRecentlyPushed ? 'Added!' : '+ Today'}
-                      </span>
-                    </button>
-
-                    {/* Delete Recurring Task */}
-                    <button
-                      type="button"
-                      onClick={() => deleteRecurringTask(task.id)}
-                      className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors"
-                      aria-label={`Delete recurring task ${task.title}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
+                    </div>
+                  )}
                 </div>
               );
             })}
