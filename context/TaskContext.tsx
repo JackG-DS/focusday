@@ -33,6 +33,14 @@ interface TaskContextType {
   activeTab: ActiveTab;
   setActiveTab: (tab: ActiveTab) => void;
 
+  // Loading & Sync States
+  isLoading: boolean;
+  isSyncing: boolean;
+  syncStatus: SyncStatus;
+  syncErrorMessage: string | null;
+  dismissSyncError: () => void;
+  syncWithCloud: () => Promise<void>;
+
   // Authentication
   authUser: AuthUserState;
   authLoading: boolean;
@@ -71,13 +79,11 @@ interface TaskContextType {
   dismissCelebrationModal: () => void;
   triggerConfetti: () => void;
 
-  // Settings & Cloud Sync
+  // Settings & Storage
   settings: UserSettings;
   updateSettings: (newSettings: Partial<UserSettings>) => void;
   supabaseConfig: SupabaseConfig;
   updateSupabaseConfig: (config: SupabaseConfig) => Promise<void>;
-  syncStatus: SyncStatus;
-  syncWithCloud: () => Promise<void>;
   clearAllLocalData: () => void;
 }
 
@@ -93,12 +99,16 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authLoading, setAuthLoading] = useState<boolean>(false);
   const [authError, setAuthError] = useState<string | null>(null);
 
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
+  const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
+
   const [activeTab, setActiveTab] = useState<ActiveTab>('today');
   const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([]);
   const [poolTasks, setPoolTasks] = useState<PoolTask[]>([]);
   const [settings, setSettings] = useState<UserSettings>(StorageService.getSettings());
   const [supabaseConfig, setSupabaseConfig] = useState<SupabaseConfig>(StorageService.getSupabaseConfig());
-  const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [rolloverReport, setRolloverReport] = useState<RolloverReport | null>(null);
   const [celebrationModalTask, setCelebrationModalTask] = useState<DailyTask | null>(null);
   const [isClientReady, setIsClientReady] = useState(false);
@@ -145,18 +155,18 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       gain.connect(ctx.destination);
 
       if (type === 'complete') {
-        osc.frequency.setValueAtTime(587.33, ctx.currentTime); // D5
-        osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15); // A5
+        osc.frequency.setValueAtTime(587.33, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.15);
         gain.gain.setValueAtTime(0.15, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.2);
         osc.start();
         osc.stop(ctx.currentTime + 0.2);
       } else if (type === 'bonus') {
         osc.type = 'triangle';
-        osc.frequency.setValueAtTime(523.25, ctx.currentTime); // C5
-        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1); // E5
-        osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.2); // G5
-        osc.frequency.setValueAtTime(1046.50, ctx.currentTime + 0.3); // C6
+        osc.frequency.setValueAtTime(523.25, ctx.currentTime);
+        osc.frequency.setValueAtTime(659.25, ctx.currentTime + 0.1);
+        osc.frequency.setValueAtTime(783.99, ctx.currentTime + 0.2);
+        osc.frequency.setValueAtTime(1046.50, ctx.currentTime + 0.3);
         gain.gain.setValueAtTime(0.2, ctx.currentTime);
         gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
         osc.start();
@@ -167,7 +177,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [settings.soundEnabled]);
 
-  // Initial Load & Midnight Rollover Execution
+  // Initial Load & Midnight Rollover Execution (Synchronous Local-First)
   useEffect(() => {
     const localUid = getOrCreateUserId();
     setUserId(localUid);
@@ -184,7 +194,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const today = getTodayDateString();
 
-    // Perform Automatic Midnight Rollover
+    // Perform Automatic Midnight Rollover locally
     const overdueIncompleteTasks = loadedDaily.filter(
       (task) => !task.completed && task.date_assigned < today
     );
@@ -245,6 +255,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSettings(loadedSettings);
     setSupabaseConfig(loadedSupabase);
     setIsClientReady(true);
+    setIsLoading(false); // Local ready immediately with zero blocking!
   }, []);
 
   // Save Daily Tasks to Local Storage
@@ -268,89 +279,141 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     });
   }, []);
 
-  // Cloud Sync Handler (Scoped to authenticated user or userId)
+  // Dismiss sync error banner
+  const dismissSyncError = useCallback(() => {
+    setSyncErrorMessage(null);
+  }, []);
+
+  // Cloud Sync Handler with 7s Fallback Timeout & Guaranteed finally block
   const syncWithCloud = useCallback(async () => {
     if (!supabaseConfig.enabled || !supabaseConfig.url || !supabaseConfig.anonKey) {
       setSyncStatus('idle');
+      setIsSyncing(false);
+      setIsLoading(false);
+      return;
+    }
+
+    // If no authenticated user session exists, don't execute blocking remote queries
+    if (!authUser.isAuthenticated || !authUser.id || authUser.id === 'local-user') {
+      setSyncStatus('idle');
+      setIsSyncing(false);
+      setIsLoading(false);
       return;
     }
 
     const client = getSupabaseClient(supabaseConfig);
     if (!client) {
       setSyncStatus('error');
+      setSyncErrorMessage('Supabase client could not be initialized. Check URL and Anon Key.');
+      setIsSyncing(false);
+      setIsLoading(false);
       return;
     }
 
+    setIsSyncing(true);
+    setSyncStatus('syncing');
+    setSyncErrorMessage(null);
+
+    // Timeout safety promise (7 seconds)
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Cloud sync request timed out (7s). Database unreachable.')), 7000)
+    );
+
     try {
-      setSyncStatus('syncing');
+      await Promise.race([
+        (async () => {
+          // 1. Attempt server-side rollover RPC
+          try {
+            await rolloverIncompleteTasksRPC(supabaseConfig);
+          } catch {
+            // RPC not deployed yet, client fallback continues
+          }
 
-      // 1. Rollover overdue tasks on app load via RPC
-      if (authUser.isAuthenticated) {
-        try {
-          await rolloverIncompleteTasksRPC(supabaseConfig);
-        } catch {
-          // If RPC is not created yet, client-side rollover continues
-        }
-      }
+          // 2. Fetch cloud tasks for current user
+          const [dailyRes, poolRes] = await Promise.all([
+            client.from('daily_tasks').select('*').order('order_index', { ascending: true }),
+            client.from('pool_tasks').select('*').order('created_at', { ascending: false }),
+          ]);
 
-      // 2. Fetch cloud tasks for current user
-      const [dailyRes, poolRes] = await Promise.all([
-        client.from('daily_tasks').select('*').order('order_index', { ascending: true }),
-        client.from('pool_tasks').select('*').order('created_at', { ascending: false }),
+          if (dailyRes.error || poolRes.error) {
+            throw new Error((dailyRes.error || poolRes.error)?.message || 'Failed to fetch tasks from database');
+          }
+
+          const cloudDaily: DailyTask[] = dailyRes.data || [];
+          const cloudPool: PoolTask[] = poolRes.data || [];
+
+          // Merge Strategy
+          if (cloudDaily.length === 0 && dailyTasks.length > 0) {
+            const tasksToUpload = dailyTasks.map((t) => ({ ...t, user_id: authUser.id }));
+            await client.from('daily_tasks').insert(tasksToUpload);
+          } else if (cloudDaily.length > 0) {
+            setDailyTasks(cloudDaily);
+          }
+
+          if (cloudPool.length === 0 && poolTasks.length > 0) {
+            const tasksToUpload = poolTasks.map((t) => ({ ...t, user_id: authUser.id }));
+            await client.from('pool_tasks').insert(tasksToUpload);
+          } else if (cloudPool.length > 0) {
+            setPoolTasks(cloudPool);
+          }
+
+          setSyncStatus('synced');
+        })(),
+        timeoutPromise,
       ]);
-
-      if (dailyRes.error || poolRes.error) {
-        console.error('Supabase query error:', dailyRes.error || poolRes.error);
-        setSyncStatus('error');
-        return;
-      }
-
-      const cloudDaily: DailyTask[] = dailyRes.data || [];
-      const cloudPool: PoolTask[] = poolRes.data || [];
-
-      // Merge Strategy: If cloud is empty and local has items, upload local items with current user_id
-      if (cloudDaily.length === 0 && dailyTasks.length > 0 && authUser.isAuthenticated) {
-        const tasksToUpload = dailyTasks.map((t) => ({ ...t, user_id: authUser.id }));
-        await client.from('daily_tasks').insert(tasksToUpload);
-      } else if (cloudDaily.length > 0) {
-        setDailyTasks(cloudDaily);
-      }
-
-      if (cloudPool.length === 0 && poolTasks.length > 0 && authUser.isAuthenticated) {
-        const tasksToUpload = poolTasks.map((t) => ({ ...t, user_id: authUser.id }));
-        await client.from('pool_tasks').insert(tasksToUpload);
-      } else if (cloudPool.length > 0) {
-        setPoolTasks(cloudPool);
-      }
-
-      setSyncStatus('synced');
-    } catch (err) {
-      console.error('Sync failed:', err);
+    } catch (err: any) {
+      console.warn('Sync attempt failed or timed out:', err);
       setSyncStatus('error');
+      setSyncErrorMessage(err?.message || 'Database unreachable. Running in local offline mode.');
+    } finally {
+      setIsSyncing(false);
+      setIsLoading(false);
     }
   }, [supabaseConfig, authUser, dailyTasks, poolTasks]);
 
-  // Listen to Supabase Auth State Changes
+  // Auth State Listener with Clean Unmount
   useEffect(() => {
-    if (!supabaseConfig.enabled) return;
-    const client = getSupabaseClient(supabaseConfig);
-    if (!client) return;
+    if (!supabaseConfig.enabled || !supabaseConfig.url || !supabaseConfig.anonKey) {
+      setIsLoading(false);
+      setIsSyncing(false);
+      return;
+    }
 
-    // Check initial user
-    client.auth.getUser().then(({ data }) => {
-      if (data.user) {
-        setAuthUser({
-          id: data.user.id,
-          email: data.user.email || null,
-          isAuthenticated: true,
-        });
-        setUserId(data.user.id);
-        syncWithCloud();
-      }
-    });
+    const client = getSupabaseClient(supabaseConfig);
+    if (!client) {
+      setIsLoading(false);
+      setIsSyncing(false);
+      return;
+    }
+
+    let isMounted = true;
+
+    // Check initial user session
+    client.auth
+      .getUser()
+      .then(({ data }) => {
+        if (!isMounted) return;
+        if (data?.user) {
+          setAuthUser({
+            id: data.user.id,
+            email: data.user.email || null,
+            isAuthenticated: true,
+          });
+          setUserId(data.user.id);
+        }
+      })
+      .catch((err) => {
+        console.warn('Auth getUser error:', err);
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      });
 
     const { data: authListener } = client.auth.onAuthStateChange(
-      async (event, session) => {
+      (event, session) => {
+        if (!isMounted) return;
         if (session?.user) {
           setAuthUser({
             id: session.user.id,
@@ -358,7 +421,6 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             isAuthenticated: true,
           });
           setUserId(session.user.id);
-          syncWithCloud();
         } else if (event === 'SIGNED_OUT') {
           const localUid = getOrCreateUserId();
           setAuthUser({
@@ -367,14 +429,95 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             isAuthenticated: false,
           });
           setUserId(localUid);
+          setSyncStatus('idle');
+          setIsSyncing(false);
+          setSyncErrorMessage(null);
         }
       }
     );
 
     return () => {
+      isMounted = false;
       authListener.subscription.unsubscribe();
     };
-  }, [supabaseConfig, syncWithCloud]);
+  }, [supabaseConfig]);
+
+  // Trigger sync when user becomes authenticated
+  useEffect(() => {
+    if (authUser.isAuthenticated && supabaseConfig.enabled) {
+      syncWithCloud();
+    }
+  }, [authUser.isAuthenticated, authUser.id, supabaseConfig.enabled, syncWithCloud]);
+
+  // Realtime Channel Subscription: Single channel 'public:tasks' filtered by user_id
+  useEffect(() => {
+    if (!supabaseConfig.enabled || !authUser.isAuthenticated || !authUser.id || authUser.id === 'local-user') {
+      return;
+    }
+
+    const client = getSupabaseClient(supabaseConfig);
+    if (!client) return;
+
+    const channel = client
+      .channel('public:tasks')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'daily_tasks',
+          filter: `user_id=eq.${authUser.id}`,
+        },
+        () => {
+          syncWithCloud();
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'pool_tasks',
+          filter: `user_id=eq.${authUser.id}`,
+        },
+        () => {
+          syncWithCloud();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      client.removeChannel(channel);
+    };
+  }, [supabaseConfig, authUser.isAuthenticated, authUser.id, syncWithCloud]);
+
+  // Network Status Monitor (Online/Offline)
+  useEffect(() => {
+    const handleOnline = () => {
+      if (supabaseConfig.enabled && authUser.isAuthenticated) {
+        syncWithCloud();
+      } else {
+        setSyncStatus('idle');
+      }
+    };
+    const handleOffline = () => {
+      setSyncStatus('offline');
+      setIsSyncing(false);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    if (!navigator.onLine) {
+      setSyncStatus('offline');
+      setIsSyncing(false);
+    }
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, [supabaseConfig.enabled, authUser.isAuthenticated, syncWithCloud]);
 
   // Sign In Handler
   const handleSignIn = useCallback(
@@ -397,12 +540,11 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isAuthenticated: true,
         });
         setUserId(result.user.id);
-        setTimeout(() => syncWithCloud(), 300);
         return true;
       }
       return false;
     },
-    [supabaseConfig, syncWithCloud]
+    [supabaseConfig]
   );
 
   // Sign Up Handler
@@ -426,12 +568,11 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isAuthenticated: true,
         });
         setUserId(result.user.id);
-        setTimeout(() => syncWithCloud(), 300);
         return true;
       }
       return false;
     },
-    [supabaseConfig, syncWithCloud]
+    [supabaseConfig]
   );
 
   // Sign Out Handler
@@ -447,6 +588,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUserId(localUid);
     setAuthLoading(false);
     setSyncStatus('idle');
+    setIsSyncing(false);
+    setSyncErrorMessage(null);
   }, [supabaseConfig]);
 
   // Update Supabase Config
@@ -454,78 +597,17 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSupabaseConfig(newConfig);
     StorageService.saveSupabaseConfig(newConfig);
     if (newConfig.enabled && newConfig.url && newConfig.anonKey) {
-      const client = getSupabaseClient(newConfig);
-      if (client) {
-        setSyncStatus('syncing');
-        try {
-          const { error } = await client.from('daily_tasks').select('id').limit(1);
-          if (error) {
-            setSyncStatus('error');
-          } else {
-            setSyncStatus('synced');
-            syncWithCloud();
-          }
-        } catch {
-          setSyncStatus('error');
-        }
+      if (authUser.isAuthenticated) {
+        syncWithCloud();
+      } else {
+        setSyncStatus('idle');
       }
     } else {
       setSyncStatus('idle');
+      setIsSyncing(false);
+      setSyncErrorMessage(null);
     }
-  }, [syncWithCloud]);
-
-  // Realtime Subscription Setup for Supabase
-  useEffect(() => {
-    if (!supabaseConfig.enabled) return;
-    const client = getSupabaseClient(supabaseConfig);
-    if (!client) return;
-
-    const channel = client
-      .channel('antigravity-realtime-sync')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'daily_tasks' },
-        () => {
-          syncWithCloud();
-        }
-      )
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'pool_tasks' },
-        () => {
-          syncWithCloud();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      client.removeChannel(channel);
-    };
-  }, [supabaseConfig, syncWithCloud]);
-
-  // Network Status Monitor (Online/Offline)
-  useEffect(() => {
-    const handleOnline = () => {
-      if (supabaseConfig.enabled) {
-        syncWithCloud();
-      }
-    };
-    const handleOffline = () => {
-      setSyncStatus('offline');
-    };
-
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-
-    if (!navigator.onLine) {
-      setSyncStatus('offline');
-    }
-
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-    };
-  }, [supabaseConfig.enabled, syncWithCloud]);
+  }, [authUser.isAuthenticated, syncWithCloud]);
 
   // Today's Tasks
   const todaysTasks = useMemo(() => {
@@ -585,10 +667,14 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setDailyTasks((prev) => [...prev, newTask]);
 
-      if (supabaseConfig.enabled) {
+      if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
         if (client) {
-          await client.from('daily_tasks').insert(newTask);
+          try {
+            await client.from('daily_tasks').insert(newTask);
+          } catch (e) {
+            console.warn('Failed to insert daily task to cloud:', e);
+          }
         }
       }
     },
@@ -646,13 +732,17 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setDailyTasks((prev) => [...prev, newDailyTask]);
 
-      if (supabaseConfig.enabled) {
+      if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
         if (client) {
-          await Promise.all([
-            client.from('pool_tasks').delete().eq('id', chosenPoolTask.id),
-            client.from('daily_tasks').insert(newDailyTask),
-          ]);
+          try {
+            await Promise.all([
+              client.from('pool_tasks').delete().eq('id', chosenPoolTask.id),
+              client.from('daily_tasks').insert(newDailyTask),
+            ]);
+          } catch (e) {
+            console.warn('Failed to sync pulled bonus task to cloud:', e);
+          }
         }
       }
 
@@ -715,15 +805,19 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      if (supabaseConfig.enabled) {
+      if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
         if (client) {
           const taskToUpdate = dailyTasks.find((t) => t.id === id);
           if (taskToUpdate) {
-            await client
-              .from('daily_tasks')
-              .update({ completed: !taskToUpdate.completed })
-              .eq('id', id);
+            try {
+              await client
+                .from('daily_tasks')
+                .update({ completed: !taskToUpdate.completed })
+                .eq('id', id);
+            } catch (e) {
+              console.warn('Failed to update task completion on cloud:', e);
+            }
           }
         }
       }
@@ -737,6 +831,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       poolTasks,
       pullBonusTaskToToday,
       supabaseConfig,
+      authUser.isAuthenticated,
     ]
   );
 
@@ -748,14 +843,18 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         prev.map((task) => (task.id === id ? { ...task, title: newTitle.trim() } : task))
       );
 
-      if (supabaseConfig.enabled) {
+      if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
         if (client) {
-          await client.from('daily_tasks').update({ title: newTitle.trim() }).eq('id', id);
+          try {
+            await client.from('daily_tasks').update({ title: newTitle.trim() }).eq('id', id);
+          } catch (e) {
+            console.warn('Failed to update task title on cloud:', e);
+          }
         }
       }
     },
-    [supabaseConfig]
+    [supabaseConfig, authUser.isAuthenticated]
   );
 
   // Delete Daily Task
@@ -763,14 +862,18 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     async (id: string) => {
       setDailyTasks((prev) => prev.filter((task) => task.id !== id));
 
-      if (supabaseConfig.enabled) {
+      if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
         if (client) {
-          await client.from('daily_tasks').delete().eq('id', id);
+          try {
+            await client.from('daily_tasks').delete().eq('id', id);
+          } catch (e) {
+            console.warn('Failed to delete daily task from cloud:', e);
+          }
         }
       }
     },
-    [supabaseConfig]
+    [supabaseConfig, authUser.isAuthenticated]
   );
 
   // Reorder Daily Tasks
@@ -795,17 +898,21 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const allUpdated = [...otherTasks, ...reordered];
       setDailyTasks(allUpdated);
 
-      if (supabaseConfig.enabled) {
+      if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
         if (client) {
-          const updates = reordered.map((t) =>
-            client.from('daily_tasks').update({ order_index: t.order_index }).eq('id', t.id)
-          );
-          await Promise.all(updates);
+          try {
+            const updates = reordered.map((t) =>
+              client.from('daily_tasks').update({ order_index: t.order_index }).eq('id', t.id)
+            );
+            await Promise.all(updates);
+          } catch (e) {
+            console.warn('Failed to sync reorder to cloud:', e);
+          }
         }
       }
     },
-    [dailyTasks, supabaseConfig]
+    [dailyTasks, supabaseConfig, authUser.isAuthenticated]
   );
 
   // Add Pool Task
@@ -823,10 +930,14 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       setPoolTasks((prev) => [newPoolTask, ...prev]);
 
-      if (supabaseConfig.enabled) {
+      if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
         if (client) {
-          await client.from('pool_tasks').insert(newPoolTask);
+          try {
+            await client.from('pool_tasks').insert(newPoolTask);
+          } catch (e) {
+            console.warn('Failed to insert pool task to cloud:', e);
+          }
         }
       }
     },
@@ -838,14 +949,18 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     async (id: string) => {
       setPoolTasks((prev) => prev.filter((p) => p.id !== id));
 
-      if (supabaseConfig.enabled) {
+      if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
         if (client) {
-          await client.from('pool_tasks').delete().eq('id', id);
+          try {
+            await client.from('pool_tasks').delete().eq('id', id);
+          } catch (e) {
+            console.warn('Failed to delete pool task from cloud:', e);
+          }
         }
       }
     },
-    [supabaseConfig]
+    [supabaseConfig, authUser.isAuthenticated]
   );
 
   // Dismiss Modals
@@ -865,6 +980,9 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDailyTasks(StorageService.getDailyTasks(uid));
     setPoolTasks(StorageService.getPoolTasks(uid));
     setSettings(StorageService.getSettings());
+    setSyncStatus('idle');
+    setIsSyncing(false);
+    setSyncErrorMessage(null);
   }, []);
 
   return (
@@ -872,6 +990,12 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       value={{
         activeTab,
         setActiveTab,
+        isLoading,
+        isSyncing,
+        syncStatus,
+        syncErrorMessage,
+        dismissSyncError,
+        syncWithCloud,
         authUser,
         authLoading,
         authError,
@@ -904,8 +1028,6 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateSettings,
         supabaseConfig,
         updateSupabaseConfig,
-        syncStatus,
-        syncWithCloud,
         clearAllLocalData,
       }}
     >

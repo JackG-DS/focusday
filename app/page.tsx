@@ -10,6 +10,7 @@ import { SettingsModal } from '@/components/SettingsModal';
 import { BonusCelebrationModal } from '@/components/BonusCelebrationModal';
 import { BottomNav } from '@/components/BottomNav';
 import { PWAInstallBanner } from '@/components/PWAInstallBanner';
+import { SyncErrorBanner } from '@/components/SyncErrorBanner';
 import { useTaskContext } from '@/context/TaskContext';
 
 export default function Home() {
@@ -39,6 +40,9 @@ export default function Home() {
 
       {/* Main Container */}
       <div className="flex-1 max-w-2xl w-full mx-auto px-4 py-4 space-y-4">
+        {/* Cloud Sync Offline/Error Fallback Banner */}
+        <SyncErrorBanner />
+
         {/* PWA Install Notification */}
         <PWAInstallBanner />
 
