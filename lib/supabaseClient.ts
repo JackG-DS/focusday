@@ -156,3 +156,18 @@ export async function pullBonusTaskRPC(
     error: error ? new Error(error.message) : null,
   };
 }
+
+// RPC Helper: Clear completed tasks for the current user
+export async function clearCompletedTasksRPC(
+  config?: SupabaseConfig
+): Promise<{ error: Error | null }> {
+  const client = getSupabaseClient(config);
+  if (!client) {
+    return { error: new Error('Supabase client is not configured') };
+  }
+
+  const { error } = await client.rpc('clear_completed_tasks');
+  return {
+    error: error ? new Error(error.message) : null,
+  };
+}

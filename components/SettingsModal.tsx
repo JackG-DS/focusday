@@ -14,6 +14,7 @@ import {
   Code2,
   Copy,
   Check,
+  Clock,
 } from 'lucide-react';
 import { useTaskContext } from '@/context/TaskContext';
 import { SupabaseConfig } from '@/lib/types';
@@ -69,7 +70,7 @@ export const SettingsModal: React.FC = () => {
   };
 
   const schemaSQL = `-- 1. Create Daily Tasks Table
-create table public.daily_tasks (
+create table if not exists public.daily_tasks (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
   title text not null,
@@ -80,58 +81,92 @@ create table public.daily_tasks (
 );
 
 -- 2. Create Bonus Pool Tasks Table
-create table public.pool_tasks (
+create table if not exists public.pool_tasks (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
   title text not null,
   created_at timestamptz not null default timezone('utc'::text, now())
 );
 
--- 3. Indexes for Fast Filtering & Ordering
-create index idx_daily_tasks_user_date on public.daily_tasks(user_id, date_assigned, order_index);
-create index idx_pool_tasks_user on public.pool_tasks(user_id);
+-- 3. Create User Settings Table
+create table if not exists public.user_settings (
+  user_id uuid primary key references auth.users(id) on delete cascade default auth.uid(),
+  reset_time text not null default '04:00',
+  last_reset_date date,
+  updated_at timestamptz not null default timezone('utc'::text, now())
+);
 
--- 4. Enable Row Level Security (RLS)
+-- 4. Indexes for Fast Filtering & Ordering
+create index if not exists idx_daily_tasks_user_date on public.daily_tasks(user_id, date_assigned, order_index);
+create index if not exists idx_pool_tasks_user on public.pool_tasks(user_id);
+
+-- 5. Enable Row Level Security (RLS)
 alter table public.daily_tasks enable row level security;
 alter table public.pool_tasks enable row level security;
+alter table public.user_settings enable row level security;
 
--- 5. RLS Policies for daily_tasks
+-- 6. RLS Policies for daily_tasks
+drop policy if exists "Users can view their own daily tasks" on public.daily_tasks;
 create policy "Users can view their own daily tasks"
   on public.daily_tasks for select
   using (auth.uid() = user_id);
 
+drop policy if exists "Users can insert their own daily tasks" on public.daily_tasks;
 create policy "Users can insert their own daily tasks"
   on public.daily_tasks for insert
   with check (auth.uid() = user_id);
 
+drop policy if exists "Users can update their own daily tasks" on public.daily_tasks;
 create policy "Users can update their own daily tasks"
   on public.daily_tasks for update
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
+drop policy if exists "Users can delete their own daily tasks" on public.daily_tasks;
 create policy "Users can delete their own daily tasks"
   on public.daily_tasks for delete
   using (auth.uid() = user_id);
 
--- 6. RLS Policies for pool_tasks
+-- 7. RLS Policies for pool_tasks
+drop policy if exists "Users can view their own pool tasks" on public.pool_tasks;
 create policy "Users can view their own pool tasks"
   on public.pool_tasks for select
   using (auth.uid() = user_id);
 
+drop policy if exists "Users can insert their own pool tasks" on public.pool_tasks;
 create policy "Users can insert their own pool tasks"
   on public.pool_tasks for insert
   with check (auth.uid() = user_id);
 
+drop policy if exists "Users can update their own pool tasks" on public.pool_tasks;
 create policy "Users can update their own pool tasks"
   on public.pool_tasks for update
   using (auth.uid() = user_id)
   with check (auth.uid() = user_id);
 
+drop policy if exists "Users can delete their own pool tasks" on public.pool_tasks;
 create policy "Users can delete their own pool tasks"
   on public.pool_tasks for delete
   using (auth.uid() = user_id);
 
--- 7. Helper: Rollover incomplete tasks from previous days to today
+-- 8. RLS Policies for user_settings
+drop policy if exists "Users can view their own settings" on public.user_settings;
+create policy "Users can view their own settings"
+  on public.user_settings for select
+  using (auth.uid() = user_id);
+
+drop policy if exists "Users can insert their own settings" on public.user_settings;
+create policy "Users can insert their own settings"
+  on public.user_settings for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can update their own settings" on public.user_settings;
+create policy "Users can update their own settings"
+  on public.user_settings for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+-- 9. Helper: Rollover incomplete tasks from previous days to today
 create or replace function rollover_incomplete_tasks()
 returns setof public.daily_tasks
 language plpgsql
@@ -148,7 +183,7 @@ begin
 end;
 $$;
 
--- 8. Helper: Pull one random pool task and move it into today's daily list
+-- 10. Helper: Pull one random pool task and move it into today's daily list
 create or replace function pull_bonus_task()
 returns public.daily_tasks
 language plpgsql
@@ -160,7 +195,6 @@ declare
   v_new_task public.daily_tasks;
   v_max_order integer;
 begin
-  -- 1. Grab a random task from the pool
   select id, title into v_pool_id, v_title
   from public.pool_tasks
   where user_id = auth.uid()
@@ -171,20 +205,30 @@ begin
     return null;
   end if;
 
-  -- 2. Find the current max order_index for today
   select coalesce(max(order_index), 0) + 1 into v_max_order
   from public.daily_tasks
   where user_id = auth.uid() and date_assigned = current_date;
 
-  -- 3. Insert into daily_tasks for today
   insert into public.daily_tasks (user_id, title, completed, order_index, date_assigned)
   values (auth.uid(), v_title, false, v_max_order, current_date)
   returning * into v_new_task;
 
-  -- 4. Delete the claimed item from the pool
   delete from public.pool_tasks where id = v_pool_id;
 
   return v_new_task;
+end;
+$$;
+
+-- 11. Helper: Clear completed tasks for current user
+create or replace function clear_completed_tasks()
+returns void
+language plpgsql
+security invoker
+as $$
+begin
+  delete from public.daily_tasks
+  where user_id = auth.uid()
+    and completed = true;
 end;
 $$;`;
 
@@ -195,15 +239,25 @@ $$;`;
   };
 
   return (
-    <div className="space-y-4 pb-12">
-      {/* User Auth Card */}
+    <div className="space-y-4 pb-12 animate-fade-in">
+      {/* Page Title */}
+      <div>
+        <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+          Settings &amp; Cloud Sync
+        </h2>
+        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
+          Manage your cloud database sync, email authentication, and app preferences.
+        </p>
+      </div>
+
+      {/* Supabase User Authentication Card */}
       <AuthCard />
 
-      {/* Cloud Sync Supabase Configuration */}
-      <div className="p-4 rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 shadow-xs space-y-3">
-        <div className="flex items-start justify-between gap-2">
+      {/* Cloud Sync Config Card */}
+      <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 shadow-xs space-y-4">
+        <div className="flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-blue-500 text-white shadow-xs">
+            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
               <Cloud className="w-5 h-5" />
             </div>
             <div>
@@ -276,10 +330,10 @@ $$;`;
               Supabase Project URL
             </label>
             <input
-              type="url"
+              type="text"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://xyz.supabase.co"
+              placeholder="https://xyzcompany.supabase.co"
               className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
             />
           </div>
@@ -341,8 +395,31 @@ $$;`;
       {/* App Preferences */}
       <div className="p-4 rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 shadow-xs space-y-3">
         <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
-          Preferences & Rewards
+          Preferences &amp; Daily Schedule
         </h3>
+
+        {/* Daily Reset Time Picker */}
+        <div className="flex items-center justify-between py-2 border-b border-slate-100 dark:border-slate-700/60">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+              <Clock className="w-4 h-4 text-emerald-500" />
+            </div>
+            <div>
+              <p className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200">
+                Daily Reset Time
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Auto-clears completed tasks each day at this time
+              </p>
+            </div>
+          </div>
+          <input
+            type="time"
+            value={settings.reset_time || '04:00'}
+            onChange={(e) => updateSettings({ reset_time: e.target.value })}
+            className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-slate-100 dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+          />
+        </div>
 
         {/* Sound FX Toggle */}
         <div className="flex items-center justify-between py-1">
@@ -402,7 +479,7 @@ $$;`;
       {/* Data Management */}
       <div className="p-4 rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 shadow-xs space-y-3">
         <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
-          Data & Local Backup
+          Data &amp; Local Backup
         </h3>
 
         <div className="grid grid-cols-2 gap-2 pt-1">
@@ -420,10 +497,10 @@ $$;`;
                 clearAllLocalData();
               }
             }}
-            className="flex items-center justify-center gap-1.5 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 text-rose-700 dark:text-rose-300 text-xs font-semibold transition-colors"
+            className="flex items-center justify-center gap-1.5 p-2.5 rounded-xl border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 text-xs font-semibold transition-colors"
           >
             <Trash2 className="w-4 h-4" />
-            <span>Reset Data</span>
+            <span>Clear Local Data</span>
           </button>
         </div>
       </div>

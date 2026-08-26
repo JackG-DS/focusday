@@ -1,7 +1,7 @@
 -- ====================================================================
 -- SUPABASE SCHEMA, RLS POLICIES & HELPER FUNCTIONS
 -- Project: FocusDay To-Do List Progressive Web App
--- Features: Daily Tasks, Bonus Pool, Strict User RLS, Realtime & RPCs
+-- Features: Daily Tasks, Bonus Pool, User Settings, Strict RLS & RPCs
 -- ====================================================================
 
 -- 1. Create Daily Tasks Table
@@ -23,15 +23,24 @@ create table if not exists public.pool_tasks (
   created_at timestamptz not null default timezone('utc'::text, now())
 );
 
--- 3. Indexes for Fast Filtering & Ordering
+-- 3. Create User Settings Table
+create table if not exists public.user_settings (
+  user_id uuid primary key references auth.users(id) on delete cascade default auth.uid(),
+  reset_time text not null default '04:00',
+  last_reset_date date,
+  updated_at timestamptz not null default timezone('utc'::text, now())
+);
+
+-- 4. Indexes for Fast Filtering & Ordering
 create index if not exists idx_daily_tasks_user_date on public.daily_tasks(user_id, date_assigned, order_index);
 create index if not exists idx_pool_tasks_user on public.pool_tasks(user_id);
 
--- 4. Enable Row Level Security (RLS)
+-- 5. Enable Row Level Security (RLS)
 alter table public.daily_tasks enable row level security;
 alter table public.pool_tasks enable row level security;
+alter table public.user_settings enable row level security;
 
--- 5. RLS Policies for daily_tasks
+-- 6. RLS Policies for daily_tasks
 drop policy if exists "Users can view their own daily tasks" on public.daily_tasks;
 create policy "Users can view their own daily tasks"
   on public.daily_tasks for select
@@ -53,7 +62,7 @@ create policy "Users can delete their own daily tasks"
   on public.daily_tasks for delete
   using (auth.uid() = user_id);
 
--- 6. RLS Policies for pool_tasks
+-- 7. RLS Policies for pool_tasks
 drop policy if exists "Users can view their own pool tasks" on public.pool_tasks;
 create policy "Users can view their own pool tasks"
   on public.pool_tasks for select
@@ -75,26 +84,25 @@ create policy "Users can delete their own pool tasks"
   on public.pool_tasks for delete
   using (auth.uid() = user_id);
 
--- 7. Enable Realtime Publications
-do $$
-begin
-  if not exists (
-    select 1 from pg_publication_tables 
-    where pubname = 'supabase_realtime' and tablename = 'daily_tasks'
-  ) then
-    alter publication supabase_realtime add table public.daily_tasks;
-  end if;
+-- 8. RLS Policies for user_settings
+drop policy if exists "Users can view their own settings" on public.user_settings;
+create policy "Users can view their own settings"
+  on public.user_settings for select
+  using (auth.uid() = user_id);
 
-  if not exists (
-    select 1 from pg_publication_tables 
-    where pubname = 'supabase_realtime' and tablename = 'pool_tasks'
-  ) then
-    alter publication supabase_realtime add table public.pool_tasks;
-  end if;
-end $$;
+drop policy if exists "Users can insert their own settings" on public.user_settings;
+create policy "Users can insert their own settings"
+  on public.user_settings for insert
+  with check (auth.uid() = user_id);
+
+drop policy if exists "Users can update their own settings" on public.user_settings;
+create policy "Users can update their own settings"
+  on public.user_settings for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
 
 -- ====================================================================
--- 8. Helper Functions (RPC)
+-- 9. Helper Functions (RPC)
 -- ====================================================================
 
 -- Helper: Rollover incomplete tasks from previous days to today
@@ -151,5 +159,18 @@ begin
   delete from public.pool_tasks where id = v_pool_id;
 
   return v_new_task;
+end;
+$$;
+
+-- Helper: Clear completed tasks for the current user
+create or replace function clear_completed_tasks()
+returns void
+language plpgsql
+security invoker
+as $$
+begin
+  delete from public.daily_tasks
+  where user_id = auth.uid()
+    and completed = true;
 end;
 $$;

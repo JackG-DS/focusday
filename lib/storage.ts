@@ -126,6 +126,8 @@ export const DEFAULT_SETTINGS: UserSettings = {
   lastActiveDate: getTodayDateString(),
   streakCount: 1,
   bonusTriggeredDates: [],
+  reset_time: '04:00',
+  last_reset_date: '',
 };
 
 export const StorageService = {

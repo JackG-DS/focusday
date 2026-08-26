@@ -36,7 +36,9 @@ export interface UserSettings {
   lastActiveDate: string; // YYYY-MM-DD
   streakCount: number;
   lastCompletedDate?: string;
-  bonusTriggeredDates: string[]; // List of YYYY-MM-DD dates where bonus was already auto-pulled
+  bonusTriggeredDates?: string[];
+  reset_time: string; // HH:MM, default "04:00"
+  last_reset_date?: string; // YYYY-MM-DD
 }
 
 export type ActiveTab = 'today' | 'pool' | 'history' | 'settings';

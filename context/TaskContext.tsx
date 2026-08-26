@@ -27,6 +27,7 @@ import {
   signOutUser,
   rolloverIncompleteTasksRPC,
   pullBonusTaskRPC,
+  clearCompletedTasksRPC,
 } from '@/lib/supabaseClient';
 
 interface TaskContextType {
@@ -184,8 +185,60 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSyncErrorMessage(null);
   }, []);
 
+  // Check if current time has passed daily reset threshold
+  const checkShouldReset = useCallback((resetTime: string = '04:00', lastResetDate?: string): boolean => {
+    const now = new Date();
+    const today = getTodayDateString();
+
+    if (lastResetDate === today) {
+      return false;
+    }
+
+    const [resetHStr, resetMStr] = (resetTime || '04:00').split(':');
+    const resetH = parseInt(resetHStr, 10) || 4;
+    const resetM = parseInt(resetMStr, 10) || 0;
+
+    const currentH = now.getHours();
+    const currentM = now.getMinutes();
+
+    return currentH > resetH || (currentH === resetH && currentM >= resetM);
+  }, []);
+
+  // Save Settings to Local Storage & Supabase
+  const updateSettings = useCallback(
+    (newSettings: Partial<UserSettings>) => {
+      setSettings((prev) => {
+        const updated = { ...prev, ...newSettings };
+        StorageService.saveSettings(updated);
+
+        // Sync with public.user_settings if authenticated
+        if (supabaseConfig.enabled && authUser.isAuthenticated && authUser.id) {
+          const client = getSupabaseClient(supabaseConfig);
+          if (client) {
+            client
+              .from('user_settings')
+              .upsert({
+                user_id: authUser.id,
+                reset_time: updated.reset_time || '04:00',
+                last_reset_date: updated.last_reset_date || null,
+                updated_at: new Date().toISOString(),
+              })
+              .then(({ error }) => {
+                if (error) {
+                  console.warn('[TaskContext] Error saving user_settings:', error.message);
+                }
+              });
+          }
+        }
+
+        return updated;
+      });
+    },
+    [supabaseConfig, authUser]
+  );
+
   // =========================================================================
-  // Manual & On-Load Refresh Method (No WebSockets)
+  // Manual & On-Load Refresh Method + Auto Reset Check
   // =========================================================================
   const refreshTasks = useCallback(async () => {
     if (!supabaseConfig.enabled || !supabaseConfig.url || !supabaseConfig.anonKey) {
@@ -219,14 +272,53 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await Promise.race([
         (async () => {
-          // Attempt server-side rollover RPC
+          const today = getTodayDateString();
+
+          // 1. Fetch Remote User Settings
+          try {
+            const { data: userSettingsData } = await client
+              .from('user_settings')
+              .select('*')
+              .eq('user_id', targetUserId)
+              .maybeSingle();
+
+            if (userSettingsData) {
+              setSettings((prev) => {
+                const merged: UserSettings = {
+                  ...prev,
+                  reset_time: userSettingsData.reset_time || prev.reset_time || '04:00',
+                  last_reset_date: userSettingsData.last_reset_date || prev.last_reset_date || '',
+                };
+                StorageService.saveSettings(merged);
+                return merged;
+              });
+            }
+          } catch (settingsErr) {
+            console.warn('[TaskContext] Optional user_settings fetch skipped:', settingsErr);
+          }
+
+          // 2. Check Daily Auto-Reset Threshold (e.g. 04:00 AM)
+          const currentResetTime = settings.reset_time || '04:00';
+          const currentLastReset = settings.last_reset_date || '';
+
+          if (checkShouldReset(currentResetTime, currentLastReset)) {
+            console.log('[TaskContext] Daily reset threshold reached. Clearing completed tasks...');
+            try {
+              await clearCompletedTasksRPC(supabaseConfig);
+              updateSettings({ last_reset_date: today });
+            } catch (resetErr) {
+              console.warn('[TaskContext] clear_completed_tasks RPC error:', resetErr);
+            }
+          }
+
+          // 3. Attempt server-side rollover RPC
           try {
             await rolloverIncompleteTasksRPC(supabaseConfig);
           } catch (rpcErr) {
             console.warn('[TaskContext] Rollover RPC skipped:', rpcErr);
           }
 
-          // Fetch daily_tasks and pool_tasks for current user
+          // 4. Fetch daily_tasks and pool_tasks for current user
           const [dailyRes, poolRes] = await Promise.all([
             client.from('daily_tasks').select('*').order('order_index', { ascending: true }),
             client.from('pool_tasks').select('*').order('created_at', { ascending: false }),
@@ -276,7 +368,17 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsSyncing(false);
       setIsLoading(false);
     }
-  }, [supabaseConfig, authUser, userId, dailyTasks, poolTasks]);
+  }, [
+    supabaseConfig,
+    authUser,
+    userId,
+    dailyTasks,
+    poolTasks,
+    settings.reset_time,
+    settings.last_reset_date,
+    checkShouldReset,
+    updateSettings,
+  ]);
 
   // Alias for backward compatibility
   const syncWithCloud = refreshTasks;
@@ -294,6 +396,14 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const loadedSettings = StorageService.getSettings();
     const loadedSupabase = StorageService.getSupabaseConfig();
     const today = getTodayDateString();
+
+    // Auto-Reset Check on Local Storage
+    if (checkShouldReset(loadedSettings.reset_time, loadedSettings.last_reset_date)) {
+      loadedDaily = loadedDaily.filter((t) => !t.completed);
+      loadedSettings.last_reset_date = today;
+      StorageService.saveDailyTasks(loadedDaily);
+      StorageService.saveSettings(loadedSettings);
+    }
 
     // Local Midnight Rollover
     const overdueIncompleteTasks = loadedDaily.filter(
@@ -383,7 +493,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           console.error('[TaskContext] Auth session lookup error:', err);
         });
     }
-  }, []);
+  }, [checkShouldReset]);
 
   // Listen to Auth State Changes
   useEffect(() => {
@@ -439,15 +549,6 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!isClientReady) return;
     StorageService.savePoolTasks(poolTasks);
   }, [poolTasks, isClientReady]);
-
-  // Save Settings to Local Storage
-  const updateSettings = useCallback((newSettings: Partial<UserSettings>) => {
-    setSettings((prev) => {
-      const updated = { ...prev, ...newSettings };
-      StorageService.saveSettings(updated);
-      return updated;
-    });
-  }, []);
 
   // Sign In Handler
   const handleSignIn = useCallback(
@@ -612,7 +713,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [dailyTasks, userId, authUser, supabaseConfig]
   );
 
-  // Pull Bonus Task helper
+  // Pull Bonus Task helper (Guarded against null/empty result)
   const pullBonusTaskToToday = useCallback(
     async (specificId?: string): Promise<DailyTask | null> => {
       if (poolTasks.length === 0 && !specificId) return null;
@@ -620,16 +721,24 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (supabaseConfig.enabled && authUser.isAuthenticated && !specificId) {
         try {
           const { data: bonusTask, error } = await pullBonusTaskRPC(supabaseConfig);
-          if (!error && bonusTask) {
-            setDailyTasks((prev) => [...prev, bonusTask]);
-            setPoolTasks((prev) => prev.filter((p) => p.title !== bonusTask.title));
-            return bonusTask;
+          // Guard against null, empty or invalid result
+          if (error || !bonusTask || typeof bonusTask !== 'object' || !bonusTask.id) {
+            console.log('[TaskContext] No bonus tasks available from cloud.');
+            return null;
           }
+
+          setDailyTasks((prev) => {
+            if (prev.some((t) => t.id === bonusTask.id)) return prev;
+            return [...prev, bonusTask];
+          });
+          setPoolTasks((prev) => prev.filter((p) => p.title !== bonusTask.title && p.id !== bonusTask.id));
+          return bonusTask;
         } catch (rpcErr) {
           console.warn('[TaskContext] RPC pull_bonus_task fallback:', rpcErr);
         }
       }
 
+      // Client-side fallback
       let chosenPoolTask: PoolTask;
       if (specificId) {
         const found = poolTasks.find((p) => p.id === specificId);
@@ -639,6 +748,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const randomIndex = Math.floor(Math.random() * poolTasks.length);
         chosenPoolTask = poolTasks[randomIndex];
       }
+
+      if (!chosenPoolTask || !chosenPoolTask.id) return null;
 
       const updatedPool = poolTasks.filter((p) => p.id !== chosenPoolTask.id);
       setPoolTasks(updatedPool);
@@ -680,7 +791,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [poolTasks, dailyTasks, userId, authUser, supabaseConfig]
   );
 
-  // Toggle Daily Task Completion with DB-First Await & Continuous Bonus Pulls
+  // Toggle Daily Task Completion with DB-First Await & Guarded Bonus Pulls
   const toggleDailyTask = useCallback(
     async (id: string) => {
       const today = getTodayDateString();
@@ -724,7 +835,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           triggerConfetti();
           playSound('bonus');
 
-          // Update streak if today not already marked
+          // Update streak
           if (settings.lastCompletedDate !== today) {
             updateSettings({
               lastCompletedDate: today,
@@ -732,28 +843,26 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
           }
 
-          // Continuous Bonus Pull via RPC (No one-time locks)
+          // Continuous Bonus Pull via RPC (Guarded against null/empty)
           if (supabaseConfig.enabled && authUser.isAuthenticated) {
             const client = getSupabaseClient(supabaseConfig);
             if (client) {
               try {
                 const { data: bonusTask, error } = await client.rpc('pull_bonus_task');
-                if (error) {
-                  console.warn('[TaskContext] pull_bonus_task RPC returned error:', error);
-                } else if (bonusTask) {
-                  console.log('[TaskContext] Continuous bonus task pulled:', bonusTask);
-                  // Append bonusTask to local state and refresh
-                  setDailyTasks((prev) => {
-                    if (prev.some((t) => t.id === bonusTask.id)) return prev;
-                    return [...prev, bonusTask];
-                  });
-                  setPoolTasks((prev) =>
-                    prev.filter((p) => p.title !== bonusTask.title && p.id !== bonusTask.id)
-                  );
-                  await refreshTasks();
-                } else {
-                  console.log('[TaskContext] Bonus pool is empty. All tasks completed.');
+                if (error || !bonusTask || typeof bonusTask !== 'object' || !bonusTask.id) {
+                  console.log('[TaskContext] No bonus tasks available in pool.');
+                  return; // Exit cleanly without touching undefined properties
                 }
+
+                console.log('[TaskContext] Continuous bonus task pulled:', bonusTask);
+                setDailyTasks((prev) => {
+                  if (prev.some((t) => t.id === bonusTask.id)) return prev;
+                  return [...prev, bonusTask];
+                });
+                setPoolTasks((prev) =>
+                  prev.filter((p) => p.title !== bonusTask.title && p.id !== bonusTask.id)
+                );
+                await refreshTasks();
               } catch (rpcErr) {
                 console.warn('[TaskContext] pull_bonus_task RPC failed:', rpcErr);
               }
