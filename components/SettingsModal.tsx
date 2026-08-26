@@ -24,9 +24,8 @@ export const SettingsModal: React.FC = () => {
     supabaseConfig,
     updateSupabaseConfig,
     isSyncing,
-    isConnected,
     syncStatus,
-    syncWithCloud,
+    refreshTasks,
     settings,
     updateSettings,
     clearAllLocalData,
@@ -238,7 +237,7 @@ $$;`;
               className={`font-semibold flex items-center gap-1 ${
                 isSyncing
                   ? 'text-blue-600 dark:text-blue-400'
-                  : isConnected || syncStatus === 'synced'
+                  : syncStatus === 'synced'
                   ? 'text-emerald-600 dark:text-emerald-400'
                   : syncStatus === 'offline'
                   ? 'text-amber-600 dark:text-amber-400'
@@ -249,18 +248,18 @@ $$;`;
             >
               {isSyncing ? (
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : isConnected || syncStatus === 'synced' ? (
+              ) : syncStatus === 'synced' ? (
                 <CheckCircle2 className="w-3.5 h-3.5" />
               ) : syncStatus === 'error' ? (
                 <AlertCircle className="w-3.5 h-3.5" />
               ) : null}
-              {isSyncing ? 'SYNCING...' : isConnected ? 'CONNECTED' : syncStatus.toUpperCase()}
+              {isSyncing ? 'SYNCING...' : syncStatus.toUpperCase()}
             </span>
           </div>
 
           {enabled && (
             <button
-              onClick={syncWithCloud}
+              onClick={refreshTasks}
               disabled={isSyncing}
               className="px-2.5 py-1 text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 transition-colors flex items-center gap-1"
             >
