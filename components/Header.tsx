@@ -10,6 +10,8 @@ export const Header: React.FC = () => {
     settings,
     updateSettings,
     streakCount,
+    isSyncing,
+    isConnected,
     syncStatus,
     todaysTasks,
     todaysCompletionPercentage,
@@ -84,22 +86,24 @@ export const Header: React.FC = () => {
             <button
               onClick={() => setActiveTab('settings')}
               className={`p-1.5 rounded-lg text-xs font-medium transition-colors border flex items-center gap-1 ${
-                syncStatus === 'synced'
-                  ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50'
-                  : syncStatus === 'syncing'
+                isSyncing
                   ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/50'
+                  : isConnected || syncStatus === 'synced'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/50'
                   : syncStatus === 'offline'
                   ? 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
                   : syncStatus === 'error'
                   ? 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/50'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700'
               }`}
-              title={`Cloud status: ${syncStatus}. Click to configure Supabase sync & auth.`}
+              title={`Cloud status: ${isSyncing ? 'Syncing...' : isConnected ? 'Connected & Synced' : syncStatus}. Click to configure Supabase sync.`}
             >
-              {syncStatus === 'syncing' ? (
+              {isSyncing ? (
                 <RefreshCw className="w-3.5 h-3.5 animate-spin" />
               ) : syncStatus === 'offline' ? (
                 <CloudOff className="w-3.5 h-3.5" />
+              ) : isConnected || syncStatus === 'synced' ? (
+                <Cloud className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               ) : (
                 <Cloud className="w-3.5 h-3.5" />
               )}

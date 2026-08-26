@@ -37,6 +37,7 @@ interface TaskContextType {
   // Loading & Sync States
   isLoading: boolean;
   isSyncing: boolean;
+  isConnected: boolean;
   syncStatus: SyncStatus;
   syncErrorMessage: string | null;
   dismissSyncError: () => void;
@@ -102,6 +103,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [isConnected, setIsConnected] = useState<boolean>(false);
   const [syncStatus, setSyncStatus] = useState<SyncStatus>('idle');
   const [syncErrorMessage, setSyncErrorMessage] = useState<string | null>(null);
 
@@ -185,7 +187,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   // =========================================================================
-  // 2. Explicit Fetch Functions with guaranteed finally block & full logging
+  // 2. Transient Fetch Function with guaranteed finally block & full logging
   // =========================================================================
   const fetchTasksFromCloud = useCallback(async (targetUserId: string) => {
     if (isFetchingRef.current) return;
@@ -207,9 +209,9 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSyncStatus('syncing');
     setSyncErrorMessage(null);
 
-    // 6-second timeout race to prevent infinite hanging
+    // 5-second timeout race to prevent infinite hanging
     const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error('Cloud sync timeout (6s). Database unreachable.')), 6000)
+      setTimeout(() => reject(new Error('Cloud sync timeout (5s). Database unreachable.')), 5000)
     );
 
     try {
@@ -251,7 +253,6 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (cloudDaily.length > 0) {
             setDailyTasks(cloudDaily);
           } else if (dailyTasks.length > 0) {
-            // Upload initial local tasks to cloud
             const toUpload = dailyTasks.map((t) => ({ ...t, user_id: targetUserId }));
             await client.from('daily_tasks').insert(toUpload);
           }
@@ -264,6 +265,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
 
           setSyncStatus('synced');
+          setIsConnected(true);
           setSyncErrorMessage(null);
         })(),
         timeoutPromise,
@@ -273,7 +275,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSyncStatus('error');
       setSyncErrorMessage(err?.message || 'Database unreachable. Running in local offline mode.');
     } finally {
-      // ALWAYS Clear the Spinner in finally block
+      // ALWAYS Clear the Spinner immediately in finally block
       setIsSyncing(false);
       setIsLoading(false);
       isFetchingRef.current = false;
@@ -369,35 +371,42 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     // 2. Check Supabase Auth Session on Mount
     if (loadedSupabase.enabled && loadedSupabase.url && loadedSupabase.anonKey) {
-      getAuthSession(loadedSupabase).then((session) => {
-        if (session?.user) {
-          console.log('[TaskContext] User session:', session.user.id);
-          setAuthUser({
-            id: session.user.id,
-            email: session.user.email || null,
-            isAuthenticated: true,
-          });
-          setUserId(session.user.id);
-          fetchTasksFromCloud(session.user.id);
-        } else {
-          console.log('[TaskContext] No active user session, using local offline storage.');
-          setAuthUser({
-            id: localUid,
-            email: null,
-            isAuthenticated: false,
-          });
-          setUserId(localUid);
+      getAuthSession(loadedSupabase)
+        .then((session) => {
+          if (session?.user) {
+            console.log('[TaskContext] User session:', session.user.id);
+            setAuthUser({
+              id: session.user.id,
+              email: session.user.email || null,
+              isAuthenticated: true,
+            });
+            setUserId(session.user.id);
+            setIsConnected(true);
+            fetchTasksFromCloud(session.user.id);
+          } else {
+            console.log('[TaskContext] No active user session, using local offline storage.');
+            setAuthUser({
+              id: localUid,
+              email: null,
+              isAuthenticated: false,
+            });
+            setUserId(localUid);
+            setIsConnected(false);
+            setIsLoading(false);
+            setIsSyncing(false);
+            setSyncStatus('idle');
+          }
+        })
+        .catch((err) => {
+          console.error('[TaskContext] Auth session error:', err);
+          setIsConnected(false);
           setIsLoading(false);
           setIsSyncing(false);
           setSyncStatus('idle');
-        }
-      }).catch((err) => {
-        console.error('[TaskContext] Auth session error:', err);
-        setIsLoading(false);
-        setIsSyncing(false);
-      });
+        });
     } else {
       console.log('[TaskContext] Supabase not configured or disabled. Operating in local mode.');
+      setIsConnected(false);
       setIsLoading(false);
       setIsSyncing(false);
       setSyncStatus('idle');
@@ -420,6 +429,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             isAuthenticated: true,
           });
           setUserId(session.user.id);
+          setIsConnected(true);
           fetchTasksFromCloud(session.user.id);
         } else if (event === 'SIGNED_OUT') {
           const localUid = getOrCreateUserId();
@@ -429,6 +439,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             isAuthenticated: false,
           });
           setUserId(localUid);
+          setIsConnected(false);
           setSyncStatus('idle');
           setIsSyncing(false);
           setIsLoading(false);
@@ -443,10 +454,11 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, [supabaseConfig, fetchTasksFromCloud]);
 
   // =========================================================================
-  // 4. Decoupled Realtime Subscription (Only when user is authenticated)
+  // 4. Decoupled Realtime Subscription with Explicit Status Handling
   // =========================================================================
   useEffect(() => {
     if (!supabaseConfig.enabled || !authUser.isAuthenticated || !authUser.id || authUser.id === 'local-user') {
+      setIsConnected(false);
       return;
     }
 
@@ -485,6 +497,14 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       )
       .subscribe((status) => {
         console.log('[TaskContext] Realtime channel status:', status);
+        if (status === 'SUBSCRIBED') {
+          setIsSyncing(false);
+          setIsConnected(true);
+          setSyncStatus('synced');
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          setIsSyncing(false);
+          setIsConnected(false);
+        }
       });
 
     return () => {
@@ -525,6 +545,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
     const handleOffline = () => {
       setSyncStatus('offline');
+      setIsConnected(false);
       setIsSyncing(false);
     };
 
@@ -533,6 +554,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     if (!navigator.onLine) {
       setSyncStatus('offline');
+      setIsConnected(false);
       setIsSyncing(false);
     }
 
@@ -563,6 +585,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isAuthenticated: true,
         });
         setUserId(result.user.id);
+        setIsConnected(true);
         fetchTasksFromCloud(result.user.id);
         return true;
       }
@@ -592,6 +615,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isAuthenticated: true,
         });
         setUserId(result.user.id);
+        setIsConnected(true);
         fetchTasksFromCloud(result.user.id);
         return true;
       }
@@ -611,6 +635,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isAuthenticated: false,
     });
     setUserId(localUid);
+    setIsConnected(false);
     setAuthLoading(false);
     setSyncStatus('idle');
     setIsSyncing(false);
@@ -630,6 +655,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } else {
       setSyncStatus('idle');
+      setIsConnected(false);
       setIsSyncing(false);
       setSyncErrorMessage(null);
     }
@@ -669,7 +695,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Math.round((completedCount / todaysTasks.length) * 100);
   }, [todaysTasks]);
 
-  // Add Daily Task
+  // Add Daily Task (Optimistic UI + Transient Cloud Insert)
   const addDailyTask = useCallback(
     async (title: string, date?: string) => {
       if (!title.trim()) return;
@@ -1006,6 +1032,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDailyTasks(StorageService.getDailyTasks(uid));
     setPoolTasks(StorageService.getPoolTasks(uid));
     setSettings(StorageService.getSettings());
+    setIsConnected(false);
     setSyncStatus('idle');
     setIsSyncing(false);
     setSyncErrorMessage(null);
@@ -1018,6 +1045,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setActiveTab,
         isLoading,
         isSyncing,
+        isConnected,
         syncStatus,
         syncErrorMessage,
         dismissSyncError,

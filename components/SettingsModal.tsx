@@ -23,6 +23,8 @@ export const SettingsModal: React.FC = () => {
   const {
     supabaseConfig,
     updateSupabaseConfig,
+    isSyncing,
+    isConnected,
     syncStatus,
     syncWithCloud,
     settings,
@@ -234,10 +236,10 @@ $$;`;
             <span className="font-medium text-slate-600 dark:text-slate-300">Status:</span>
             <span
               className={`font-semibold flex items-center gap-1 ${
-                syncStatus === 'synced'
-                  ? 'text-emerald-600 dark:text-emerald-400'
-                  : syncStatus === 'syncing'
+                isSyncing
                   ? 'text-blue-600 dark:text-blue-400'
+                  : isConnected || syncStatus === 'synced'
+                  ? 'text-emerald-600 dark:text-emerald-400'
                   : syncStatus === 'offline'
                   ? 'text-amber-600 dark:text-amber-400'
                   : syncStatus === 'error'
@@ -245,20 +247,25 @@ $$;`;
                   : 'text-slate-500'
               }`}
             >
-              {syncStatus === 'synced' && <CheckCircle2 className="w-3.5 h-3.5" />}
-              {syncStatus === 'syncing' && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
-              {syncStatus === 'error' && <AlertCircle className="w-3.5 h-3.5" />}
-              {syncStatus.toUpperCase()}
+              {isSyncing ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : isConnected || syncStatus === 'synced' ? (
+                <CheckCircle2 className="w-3.5 h-3.5" />
+              ) : syncStatus === 'error' ? (
+                <AlertCircle className="w-3.5 h-3.5" />
+              ) : null}
+              {isSyncing ? 'SYNCING...' : isConnected ? 'CONNECTED' : syncStatus.toUpperCase()}
             </span>
           </div>
 
           {enabled && (
             <button
               onClick={syncWithCloud}
+              disabled={isSyncing}
               className="px-2.5 py-1 text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 transition-colors flex items-center gap-1"
             >
-              <RefreshCw className="w-3 h-3" />
-              <span>Sync Now</span>
+              <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span>{isSyncing ? 'Syncing...' : 'Sync Now'}</span>
             </button>
           )}
         </div>
