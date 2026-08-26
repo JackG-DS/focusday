@@ -1,0 +1,426 @@
+'use client';
+
+import React, { useState } from 'react';
+import {
+  Cloud,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  Volume2,
+  VolumeX,
+  Sparkles,
+  Trash2,
+  Download,
+  Code2,
+  Copy,
+  Check,
+} from 'lucide-react';
+import { useTaskContext } from '@/context/TaskContext';
+import { SupabaseConfig } from '@/lib/types';
+import { AuthCard } from './AuthCard';
+
+export const SettingsModal: React.FC = () => {
+  const {
+    supabaseConfig,
+    updateSupabaseConfig,
+    syncStatus,
+    syncWithCloud,
+    settings,
+    updateSettings,
+    clearAllLocalData,
+    dailyTasks,
+    poolTasks,
+  } = useTaskContext();
+
+  const [url, setUrl] = useState(supabaseConfig.url || '');
+  const [anonKey, setAnonKey] = useState(supabaseConfig.anonKey || '');
+  const [enabled, setEnabled] = useState(supabaseConfig.enabled);
+  const [copiedSchema, setCopiedSchema] = useState(false);
+  const [showSql, setShowSql] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+
+  const handleSaveConfig = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const newConfig: SupabaseConfig = {
+      url: url.trim(),
+      anonKey: anonKey.trim(),
+      enabled: enabled && Boolean(url.trim() && anonKey.trim()),
+    };
+    await updateSupabaseConfig(newConfig);
+    setSaveSuccess(true);
+    setTimeout(() => setSaveSuccess(false), 2000);
+  };
+
+  const handleExportData = () => {
+    const backup = {
+      exportedAt: new Date().toISOString(),
+      dailyTasks,
+      poolTasks,
+      settings,
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = `focusday-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(blobUrl);
+  };
+
+  const schemaSQL = `-- 1. Create Daily Tasks Table
+create table public.daily_tasks (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
+  title text not null,
+  completed boolean not null default false,
+  order_index integer not null default 0,
+  date_assigned date not null default current_date,
+  created_at timestamptz not null default timezone('utc'::text, now())
+);
+
+-- 2. Create Bonus Pool Tasks Table
+create table public.pool_tasks (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade default auth.uid(),
+  title text not null,
+  created_at timestamptz not null default timezone('utc'::text, now())
+);
+
+-- 3. Indexes for Fast Filtering & Ordering
+create index idx_daily_tasks_user_date on public.daily_tasks(user_id, date_assigned, order_index);
+create index idx_pool_tasks_user on public.pool_tasks(user_id);
+
+-- 4. Enable Row Level Security (RLS)
+alter table public.daily_tasks enable row level security;
+alter table public.pool_tasks enable row level security;
+
+-- 5. RLS Policies for daily_tasks
+create policy "Users can view their own daily tasks"
+  on public.daily_tasks for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own daily tasks"
+  on public.daily_tasks for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own daily tasks"
+  on public.daily_tasks for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "Users can delete their own daily tasks"
+  on public.daily_tasks for delete
+  using (auth.uid() = user_id);
+
+-- 6. RLS Policies for pool_tasks
+create policy "Users can view their own pool tasks"
+  on public.pool_tasks for select
+  using (auth.uid() = user_id);
+
+create policy "Users can insert their own pool tasks"
+  on public.pool_tasks for insert
+  with check (auth.uid() = user_id);
+
+create policy "Users can update their own pool tasks"
+  on public.pool_tasks for update
+  using (auth.uid() = user_id)
+  with check (auth.uid() = user_id);
+
+create policy "Users can delete their own pool tasks"
+  on public.pool_tasks for delete
+  using (auth.uid() = user_id);
+
+-- 7. Helper: Rollover incomplete tasks from previous days to today
+create or replace function rollover_incomplete_tasks()
+returns setof public.daily_tasks
+language plpgsql
+security invoker
+as $$
+begin
+  return query
+  update public.daily_tasks
+  set date_assigned = current_date
+  where user_id = auth.uid()
+    and completed = false
+    and date_assigned < current_date
+  returning *;
+end;
+$$;
+
+-- 8. Helper: Pull one random pool task and move it into today's daily list
+create or replace function pull_bonus_task()
+returns public.daily_tasks
+language plpgsql
+security invoker
+as $$
+declare
+  v_pool_id uuid;
+  v_title text;
+  v_new_task public.daily_tasks;
+  v_max_order integer;
+begin
+  -- 1. Grab a random task from the pool
+  select id, title into v_pool_id, v_title
+  from public.pool_tasks
+  where user_id = auth.uid()
+  order by random()
+  limit 1;
+
+  if v_pool_id is null then
+    return null;
+  end if;
+
+  -- 2. Find the current max order_index for today
+  select coalesce(max(order_index), 0) + 1 into v_max_order
+  from public.daily_tasks
+  where user_id = auth.uid() and date_assigned = current_date;
+
+  -- 3. Insert into daily_tasks for today
+  insert into public.daily_tasks (user_id, title, completed, order_index, date_assigned)
+  values (auth.uid(), v_title, false, v_max_order, current_date)
+  returning * into v_new_task;
+
+  -- 4. Delete the claimed item from the pool
+  delete from public.pool_tasks where id = v_pool_id;
+
+  return v_new_task;
+end;
+$$;`;
+
+  const copySql = () => {
+    navigator.clipboard.writeText(schemaSQL);
+    setCopiedSchema(true);
+    setTimeout(() => setCopiedSchema(false), 2000);
+  };
+
+  return (
+    <div className="space-y-4 pb-12">
+      {/* User Auth Card */}
+      <AuthCard />
+
+      {/* Cloud Sync Supabase Configuration */}
+      <div className="p-4 rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 shadow-xs space-y-3">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-xl bg-blue-500 text-white shadow-xs">
+              <Cloud className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
+                Supabase Real-Time Cloud Sync
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Sync tasks instantly across your phone, tablet, and laptop.
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center">
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={enabled}
+                onChange={(e) => setEnabled(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+            </label>
+          </div>
+        </div>
+
+        {/* Sync Status Badge */}
+        <div className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-900/40 rounded-xl text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-slate-600 dark:text-slate-300">Status:</span>
+            <span
+              className={`font-semibold flex items-center gap-1 ${
+                syncStatus === 'synced'
+                  ? 'text-emerald-600 dark:text-emerald-400'
+                  : syncStatus === 'syncing'
+                  ? 'text-blue-600 dark:text-blue-400'
+                  : syncStatus === 'offline'
+                  ? 'text-amber-600 dark:text-amber-400'
+                  : syncStatus === 'error'
+                  ? 'text-red-600 dark:text-red-400'
+                  : 'text-slate-500'
+              }`}
+            >
+              {syncStatus === 'synced' && <CheckCircle2 className="w-3.5 h-3.5" />}
+              {syncStatus === 'syncing' && <RefreshCw className="w-3.5 h-3.5 animate-spin" />}
+              {syncStatus === 'error' && <AlertCircle className="w-3.5 h-3.5" />}
+              {syncStatus.toUpperCase()}
+            </span>
+          </div>
+
+          {enabled && (
+            <button
+              onClick={syncWithCloud}
+              className="px-2.5 py-1 text-xs font-semibold bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-100 transition-colors flex items-center gap-1"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>Sync Now</span>
+            </button>
+          )}
+        </div>
+
+        {/* Credentials Form */}
+        <form onSubmit={handleSaveConfig} className="space-y-2.5 pt-1">
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Supabase Project URL
+            </label>
+            <input
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://xyz.supabase.co"
+              className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+              Supabase Anon Public API Key
+            </label>
+            <input
+              type="password"
+              value={anonKey}
+              onChange={(e) => setAnonKey(e.target.value)}
+              placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6..."
+              className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+            />
+          </div>
+
+          <div className="flex items-center justify-between pt-1">
+            <button
+              type="button"
+              onClick={() => setShowSql(!showSql)}
+              className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+            >
+              <Code2 className="w-3.5 h-3.5" />
+              <span>{showSql ? 'Hide SQL Schema' : 'View SQL Schema & RPCs'}</span>
+            </button>
+
+            <button
+              type="submit"
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center gap-1.5"
+            >
+              {saveSuccess ? <Check className="w-3.5 h-3.5" /> : null}
+              <span>{saveSuccess ? 'Saved!' : 'Save & Connect'}</span>
+            </button>
+          </div>
+
+          {/* SQL Snippet View */}
+          {showSql && (
+            <div className="p-3 bg-slate-900 text-slate-200 rounded-xl text-xs space-y-2 mt-2">
+              <div className="flex items-center justify-between text-slate-400">
+                <span className="font-mono">Supabase SQL Schema &amp; RPCs</span>
+                <button
+                  type="button"
+                  onClick={copySql}
+                  className="hover:text-white flex items-center gap-1"
+                >
+                  {copiedSchema ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedSchema ? 'Copied' : 'Copy'}</span>
+                </button>
+              </div>
+              <pre className="overflow-x-auto text-[11px] font-mono leading-relaxed p-2 bg-slate-950 rounded-lg max-h-56">
+                {schemaSQL}
+              </pre>
+            </div>
+          )}
+        </form>
+      </div>
+
+      {/* App Preferences */}
+      <div className="p-4 rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 shadow-xs space-y-3">
+        <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
+          Preferences & Rewards
+        </h3>
+
+        {/* Sound FX Toggle */}
+        <div className="flex items-center justify-between py-1">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+              {settings.soundEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            </div>
+            <div>
+              <p className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200">
+                Sound Effects
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Play pleasant audio chimes on task completion
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => updateSettings({ soundEnabled: !settings.soundEnabled })}
+            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+              settings.soundEnabled
+                ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400'
+                : 'bg-slate-100 dark:bg-slate-700 text-slate-500'
+            }`}
+          >
+            {settings.soundEnabled ? 'ON' : 'OFF'}
+          </button>
+        </div>
+
+        {/* Confetti Toggle */}
+        <div className="flex items-center justify-between py-1">
+          <div className="flex items-center gap-2.5">
+            <div className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300">
+              <Sparkles className="w-4 h-4 text-amber-500" />
+            </div>
+            <div>
+              <p className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-200">
+                Celebration Confetti
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Show confetti fireworks when daily tasks are done
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => updateSettings({ confettiEnabled: !settings.confettiEnabled })}
+            className={`px-3 py-1 rounded-lg text-xs font-semibold transition-colors ${
+              settings.confettiEnabled
+                ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400'
+                : 'bg-slate-100 dark:bg-slate-700 text-slate-500'
+            }`}
+          >
+            {settings.confettiEnabled ? 'ON' : 'OFF'}
+          </button>
+        </div>
+      </div>
+
+      {/* Data Management */}
+      <div className="p-4 rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 shadow-xs space-y-3">
+        <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
+          Data & Local Backup
+        </h3>
+
+        <div className="grid grid-cols-2 gap-2 pt-1">
+          <button
+            onClick={handleExportData}
+            className="flex items-center justify-center gap-1.5 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold transition-colors"
+          >
+            <Download className="w-4 h-4" />
+            <span>Export JSON</span>
+          </button>
+
+          <button
+            onClick={() => {
+              if (window.confirm('Reset all local tasks and start fresh?')) {
+                clearAllLocalData();
+              }
+            }}
+            className="flex items-center justify-center gap-1.5 p-2.5 rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50 dark:bg-rose-950/30 hover:bg-rose-100 text-rose-700 dark:text-rose-300 text-xs font-semibold transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Reset Data</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
