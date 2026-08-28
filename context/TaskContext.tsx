@@ -13,6 +13,7 @@ import {
   ActiveTab,
   RolloverReport,
   AuthUserState,
+  TaskActionResult,
 } from '@/lib/types';
 import {
   StorageService,
@@ -62,7 +63,7 @@ interface TaskContextType {
   todaysTasks: DailyTask[];
   historyDates: string[];
   getTasksForDate: (date: string) => DailyTask[];
-  addDailyTask: (title: string, notes?: string | null, color?: string | null, date?: string) => Promise<void>;
+  addDailyTask: (title: string, notes?: string | null, color?: string | null, date?: string) => Promise<TaskActionResult>;
   toggleDailyTask: (id: string) => Promise<void>;
   updateDailyTaskTitle: (id: string, newTitle: string) => Promise<void>;
   updateDailyTaskNotes: (id: string, newNotes: string | null) => Promise<void>;
@@ -93,7 +94,7 @@ interface TaskContextType {
   ) => Promise<void>;
   updateRecurringTask: (id: string, updates: Partial<RecurringTask>) => Promise<void>;
   deleteRecurringTask: (id: string) => Promise<void>;
-  pushTemplateToToday: (title: string, notes?: string | null, color?: string | null) => Promise<boolean>;
+  pushTemplateToToday: (title: string, notes?: string | null, color?: string | null) => Promise<TaskActionResult>;
 
   // Midnight Rollover & Streaks
   rolloverReport: RolloverReport | null;
@@ -451,30 +452,37 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       StorageService.saveSettings(loadedSettings);
     }
 
-    // Local Generation of Due Recurring Tasks for Today (Initial Mount Only)
-    const currentDow = new Date().getDay();
-    const existingTitles = new Set(
-      loadedDaily.filter((t) => t.date_assigned === today).map((t) => t.title.toLowerCase().trim())
-    );
-    const todayTasks = loadedDaily.filter((t) => t.date_assigned === today);
-    let maxOrder = todayTasks.length > 0 ? Math.max(...todayTasks.map((t) => t.order_index)) : -1;
+    // Local Generation of Due Recurring Tasks for Today:
+    // IMPORTANT: If Supabase is configured, rely exclusively on `generate_due_recurring_tasks` RPC on cloud init
+    // to prevent redundant client-side insertion loops that bypass database deduplication.
+    const isCloudEnabled = Boolean(loadedSupabase.enabled && loadedSupabase.url && loadedSupabase.anonKey);
+    if (!isCloudEnabled) {
+      const currentDow = new Date().getDay();
+      const existingActiveTitles = new Set(
+        loadedDaily
+          .filter((t) => t.date_assigned === today && !t.completed)
+          .map((t) => t.title.toLowerCase().trim())
+      );
+      const todayTasks = loadedDaily.filter((t) => t.date_assigned === today);
+      let maxOrder = todayTasks.length > 0 ? Math.max(...todayTasks.map((t) => t.order_index)) : -1;
 
-    for (const r of loadedRecurring) {
-      const isDue = r.frequency === 'daily' || (r.frequency === 'weekly' && r.day_of_week === currentDow);
-      if (isDue && !existingTitles.has(r.title.toLowerCase().trim())) {
-        maxOrder += 1;
-        loadedDaily.push({
-          id: generateUUID(),
-          user_id: localUid,
-          title: r.title,
-          notes: r.notes || null,
-          color: r.color || 'default',
-          completed: false,
-          order_index: maxOrder,
-          date_assigned: today,
-          created_at: new Date().toISOString(),
-        });
-        existingTitles.add(r.title.toLowerCase().trim());
+      for (const r of loadedRecurring) {
+        const isDue = r.frequency === 'daily' || (r.frequency === 'weekly' && r.day_of_week === currentDow);
+        if (isDue && !existingActiveTitles.has(r.title.toLowerCase().trim())) {
+          maxOrder += 1;
+          loadedDaily.push({
+            id: generateUUID(),
+            user_id: localUid,
+            title: r.title,
+            notes: r.notes || null,
+            color: r.color || 'default',
+            completed: false,
+            order_index: maxOrder,
+            date_assigned: today,
+            created_at: new Date().toISOString(),
+          });
+          existingActiveTitles.add(r.title.toLowerCase().trim());
+        }
       }
     }
 
@@ -554,7 +562,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
             setUserId(session.user.id);
 
-            // Execute daily generation & rollover ONCE on initial daily mount
+            // Execute cloud daily generation & rollover ONCE on initial daily mount
             try {
               await generateDueRecurringTasksRPC(loadedSupabase);
               await rolloverIncompleteTasksRPC(loadedSupabase);
@@ -773,11 +781,35 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Math.round((completedCount / todaysTasks.length) * 100);
   }, [todaysTasks]);
 
-  // Add Daily Task (with Notes & Color)
+  // Add Daily Task (with Deduplication against active tasks)
   const addDailyTask = useCallback(
-    async (title: string, notes?: string | null, color?: string | null, date?: string) => {
-      if (!title.trim()) return;
+    async (
+      title: string,
+      notes?: string | null,
+      color?: string | null,
+      date?: string
+    ): Promise<TaskActionResult> => {
+      if (!title.trim()) return { success: false, message: 'Task title cannot be empty' };
+      const trimmedTitle = title.trim();
       const targetDate = date || getTodayDateString();
+
+      // Deduplication check: check if an active/incomplete task with matching title already exists
+      const isDuplicate = dailyTasks.some(
+        (t) =>
+          t.date_assigned === targetDate &&
+          !t.completed &&
+          t.title.trim().toLowerCase() === trimmedTitle.toLowerCase()
+      );
+
+      if (isDuplicate) {
+        console.log('[TaskContext] Duplicate task creation prevented:', trimmedTitle);
+        return {
+          success: false,
+          duplicate: true,
+          message: 'Task is already active on today’s list',
+        };
+      }
+
       const existingInDate = dailyTasks.filter((t) => t.date_assigned === targetDate);
       const maxOrder = existingInDate.length > 0 
         ? Math.max(...existingInDate.map((t) => t.order_index)) 
@@ -788,7 +820,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const newTask: DailyTask = {
         id: generateUUID(),
         user_id: currentActiveUserId,
-        title: title.trim(),
+        title: trimmedTitle,
         notes: notes?.trim() || null,
         color: color || 'default',
         completed: false,
@@ -813,6 +845,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         }
       }
+
+      return { success: true, task: newTask };
     },
     [dailyTasks, userId, authUser, supabaseConfig]
   );
@@ -1322,13 +1356,35 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     [supabaseConfig, authUser.isAuthenticated]
   );
 
-  // Push Recurring Template to Today's Daily List (Preserving Notes & Color)
+  // Push Recurring Template to Today's Daily List (Preserving Notes & Color, Deduplicated)
   const pushTemplateToToday = useCallback(
-    async (title: string, notes?: string | null, color?: string | null): Promise<boolean> => {
-      if (!title.trim()) return false;
+    async (
+      title: string,
+      notes?: string | null,
+      color?: string | null
+    ): Promise<TaskActionResult> => {
+      if (!title.trim()) return { success: false, message: 'Title cannot be empty' };
       const trimmed = title.trim();
       const trimmedNotes = notes?.trim() || null;
       const taskColor = color || 'default';
+      const today = getTodayDateString();
+
+      // Deduplication check: check if an incomplete/active task with matching title already exists today
+      const isDuplicate = dailyTasks.some(
+        (t) =>
+          t.date_assigned === today &&
+          !t.completed &&
+          t.title.trim().toLowerCase() === trimmed.toLowerCase()
+      );
+
+      if (isDuplicate) {
+        console.log('[TaskContext] Duplicate template push prevented:', trimmed);
+        return {
+          success: false,
+          duplicate: true,
+          message: 'Task is already active on today’s list',
+        };
+      }
 
       if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const client = getSupabaseClient(supabaseConfig);
@@ -1339,28 +1395,38 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
               p_notes: trimmedNotes,
               p_color: taskColor,
             });
-            if (!error) {
-              if (newTask) {
-                setDailyTasks((prev) => {
-                  const next = [...prev, newTask];
-                  StorageService.saveDailyTasks(next);
-                  return next;
-                });
-              }
+
+            if (error) {
+              console.warn('[TaskContext] push_template_to_daily error:', error);
+            }
+
+            if (newTask) {
+              setDailyTasks((prev) => {
+                if (prev.some((t) => t.id === newTask.id)) return prev;
+                const next = [...prev, newTask];
+                StorageService.saveDailyTasks(next);
+                return next;
+              });
               await refreshTasks();
-              return true;
+              return { success: true, task: newTask };
+            } else {
+              // RPC returned null because task already exists active in database
+              return {
+                success: false,
+                duplicate: true,
+                message: 'Task is already active on today’s list',
+              };
             }
           } catch (e) {
-            console.warn('[TaskContext] push_template_to_daily error:', e);
+            console.warn('[TaskContext] push_template_to_daily exception:', e);
           }
         }
       }
 
       // Local/offline fallback
-      await addDailyTask(trimmed, trimmedNotes, taskColor);
-      return true;
+      return await addDailyTask(trimmed, trimmedNotes, taskColor);
     },
-    [supabaseConfig, authUser.isAuthenticated, refreshTasks, addDailyTask]
+    [dailyTasks, supabaseConfig, authUser.isAuthenticated, refreshTasks, addDailyTask]
   );
 
   // Dismiss Modals

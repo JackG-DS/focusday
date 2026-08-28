@@ -65,3 +65,10 @@ export interface RolloverReport {
   date: string;
   migratedCount: number;
 }
+
+export interface TaskActionResult {
+  success: boolean;
+  duplicate?: boolean;
+  message?: string;
+  task?: DailyTask | null;
+}

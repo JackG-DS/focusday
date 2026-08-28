@@ -227,7 +227,7 @@ begin
 end;
 $$;
 
--- Helper: Automatically generate due recurring tasks for today (preserving notes & color)
+-- Helper: Automatically generate due recurring tasks for today (preserving notes & color, deduplicated)
 create or replace function generate_due_recurring_tasks()
 returns setof public.daily_tasks
 language plpgsql
@@ -257,7 +257,8 @@ begin
         select 1 from public.daily_tasks d
         where d.user_id = auth.uid()
           and d.date_assigned = current_date
-          and d.title = r.title
+          and lower(trim(d.title)) = lower(trim(r.title))
+          and d.completed = false
       )
   loop
     v_max_order := v_max_order + 1;
@@ -272,7 +273,7 @@ begin
 end;
 $$;
 
--- Helper: Push template to today's daily tasks (preserving notes & color)
+-- Helper: Push template to today's daily tasks (preserving notes & color, prevents duplicate active tasks)
 create or replace function push_template_to_daily(p_title text, p_notes text default null, p_color text default null)
 returns public.daily_tasks
 language plpgsql
@@ -281,7 +282,21 @@ as $$
 declare
   v_max_order integer;
   v_new_task public.daily_tasks;
+  v_existing_id uuid;
 begin
+  -- Deduplication check: do not insert if an active/incomplete task with matching title already exists today
+  select id into v_existing_id
+  from public.daily_tasks
+  where user_id = auth.uid()
+    and date_assigned = current_date
+    and lower(trim(title)) = lower(trim(p_title))
+    and completed = false
+  limit 1;
+
+  if v_existing_id is not null then
+    return null;
+  end if;
+
   select coalesce(max(order_index), 0) + 1 into v_max_order
   from public.daily_tasks
   where user_id = auth.uid() and date_assigned = current_date;

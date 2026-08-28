@@ -21,6 +21,7 @@ import {
   Save,
   X,
   Palette,
+  AlertCircle,
 } from 'lucide-react';
 import { useTaskContext } from '@/context/TaskContext';
 import { RecurringTask, TaskColor } from '@/lib/types';
@@ -64,6 +65,7 @@ export const RecurringManager: React.FC = () => {
   const [mode, setMode] = useState<'daily' | 'weekly' | 'once'>('daily');
   const [selectedDow, setSelectedDow] = useState<number>(1); // Monday default
   const [addedNotice, setAddedNotice] = useState<string | null>(null);
+  const [warningNotice, setWarningNotice] = useState<string | null>(null);
   const [pushingTaskId, setPushingTaskId] = useState<string | null>(null);
   const [recentlyPushedIds, setRecentlyPushedIds] = useState<Record<string, boolean>>({});
 
@@ -108,8 +110,13 @@ export const RecurringManager: React.FC = () => {
     const taskColor = color !== 'default' ? color : null;
 
     if (mode === 'once') {
-      // Add once right now into today's list
-      await addDailyTask(trimmed, trimmedNotes, taskColor);
+      // Add once right now into today's list with duplicate guard
+      const res = await addDailyTask(trimmed, trimmedNotes, taskColor);
+      if (res.duplicate) {
+        setWarningNotice(`"${trimmed}" is already active on today's list!`);
+        setTimeout(() => setWarningNotice(null), 3500);
+        return;
+      }
       setAddedNotice(`Added "${trimmed}" to today's daily focus!`);
     } else if (mode === 'daily') {
       await addRecurringTask(trimmed, 'daily', undefined, trimmedNotes, taskColor);
@@ -124,21 +131,30 @@ export const RecurringManager: React.FC = () => {
     setNotes('');
     setColor('default');
     setShowDetails(false);
+    setWarningNotice(null);
     setTimeout(() => setAddedNotice(null), 3500);
   };
 
   const handlePushToToday = async (task: RecurringTask) => {
     setPushingTaskId(task.id);
     try {
-      await pushTemplateToToday(task.title, task.notes, task.color);
-      setRecentlyPushedIds((prev) => ({ ...prev, [task.id]: true }));
-      setAddedNotice(`Pushed "${task.title}" to today's daily tasks!`);
-      setTimeout(() => {
-        setRecentlyPushedIds((prev) => ({ ...prev, [task.id]: false }));
-      }, 2500);
-      setTimeout(() => {
-        setAddedNotice(null);
-      }, 3500);
+      const res = await pushTemplateToToday(task.title, task.notes, task.color);
+      if (res.duplicate) {
+        setWarningNotice(`"${task.title}" is already active on today's list!`);
+        setTimeout(() => setWarningNotice(null), 3500);
+        return;
+      }
+
+      if (res.success) {
+        setRecentlyPushedIds((prev) => ({ ...prev, [task.id]: true }));
+        setAddedNotice(`Pushed "${task.title}" to today's daily tasks!`);
+        setTimeout(() => {
+          setRecentlyPushedIds((prev) => ({ ...prev, [task.id]: false }));
+        }, 2500);
+        setTimeout(() => {
+          setAddedNotice(null);
+        }, 3500);
+      }
     } finally {
       setPushingTaskId(null);
     }
@@ -160,6 +176,22 @@ export const RecurringManager: React.FC = () => {
           Build habits &amp; automated routines that schedule themselves every day or week.
         </p>
       </div>
+
+      {/* Duplicate Warning Notice */}
+      {warningNotice && (
+        <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-amber-800 dark:text-amber-300 text-xs font-semibold flex items-center justify-between animate-slide-up shadow-xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>{warningNotice}</span>
+          </div>
+          <button
+            onClick={() => setWarningNotice(null)}
+            className="p-1 hover:bg-amber-500/20 rounded-lg text-amber-700 dark:text-amber-300 transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Success Notification Banner */}
       {addedNotice && (
@@ -459,7 +491,7 @@ export const RecurringManager: React.FC = () => {
                         )}
                       </button>
 
-                      {/* Quick Action: Add to Today (Copies Template, Notes & Color) */}
+                      {/* Quick Action: Add to Today (Copies Template, Notes & Color with Duplicate Guard) */}
                       <button
                         type="button"
                         onClick={() => handlePushToToday(task)}

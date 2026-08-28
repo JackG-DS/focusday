@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Plus, FileText, X, ChevronDown, ChevronUp, Palette } from 'lucide-react';
+import { Plus, FileText, X, ChevronDown, ChevronUp, Palette, AlertCircle } from 'lucide-react';
 import { useTaskContext } from '@/context/TaskContext';
 import { TaskColor } from '@/lib/types';
 
@@ -20,21 +20,51 @@ export const TaskInput: React.FC = () => {
   const [notes, setNotes] = useState('');
   const [color, setColor] = useState<TaskColor>('default');
   const [showDetails, setShowDetails] = useState(false);
+  const [warningMessage, setWarningMessage] = useState<string | null>(null);
   const { addDailyTask } = useTaskContext();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (title.trim()) {
-      addDailyTask(title.trim(), notes.trim() || null, color !== 'default' ? color : null);
+      const result = await addDailyTask(
+        title.trim(),
+        notes.trim() || null,
+        color !== 'default' ? color : null
+      );
+
+      if (result.duplicate) {
+        setWarningMessage(`"${title.trim()}" is already active on today's list!`);
+        setTimeout(() => setWarningMessage(null), 3500);
+        return;
+      }
+
       setTitle('');
       setNotes('');
       setColor('default');
       setShowDetails(false);
+      setWarningMessage(null);
     }
   };
 
   return (
     <div className="space-y-2">
+      {/* Duplicate Warning Toast */}
+      {warningMessage && (
+        <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-2xl text-amber-800 dark:text-amber-300 text-xs font-semibold flex items-center justify-between animate-slide-up shadow-xs">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>{warningMessage}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setWarningMessage(null)}
+            className="p-1 hover:bg-amber-500/20 rounded-lg text-amber-700 dark:text-amber-300 transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
       <form
         onSubmit={handleSubmit}
         className="bg-white dark:bg-slate-800/90 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-xs transition-all overflow-hidden"
