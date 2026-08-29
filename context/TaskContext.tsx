@@ -18,6 +18,7 @@ import {
 import {
   StorageService,
   getTodayDateString,
+  getTomorrowDateString,
   generateUUID,
   getOrCreateUserId,
 } from '@/lib/storage';
@@ -33,6 +34,8 @@ import {
   clearAllDailyTasksRPC,
   generateDueRecurringTasksRPC,
   pushTemplateToDailyRPC,
+  addTaskForTomorrowRPC,
+  moveTaskToTodayRPC,
 } from '@/lib/supabaseClient';
 
 interface TaskContextType {
@@ -58,9 +61,12 @@ interface TaskContextType {
   handleSignUp: (email: string, password: string) => Promise<boolean>;
   handleSignOut: () => Promise<void>;
 
-  // Daily Tasks
+  // Daily Tasks (Today & Tomorrow)
   dailyTasks: DailyTask[];
   todaysTasks: DailyTask[];
+  tomorrowTasks: DailyTask[];
+  todayStr: string;
+  tomorrowStr: string;
   historyDates: string[];
   getTasksForDate: (date: string) => DailyTask[];
   addDailyTask: (title: string, notes?: string | null, color?: string | null, date?: string) => Promise<TaskActionResult>;
@@ -70,6 +76,7 @@ interface TaskContextType {
   updateDailyTaskColor: (id: string, newColor: string | null) => Promise<void>;
   deleteDailyTask: (id: string) => Promise<void>;
   reorderDailyTasks: (activeId: string, overId: string) => Promise<void>;
+  moveTaskToToday: (taskId: string) => Promise<void>;
   clearAllDailyTasks: () => Promise<void>;
 
   // End Day & Focus Mode
@@ -144,6 +151,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isClientReady, setIsClientReady] = useState(false);
 
   const todayStr = useMemo(() => getTodayDateString(), []);
+  const tomorrowStr = useMemo(() => getTomorrowDateString(), []);
 
   // Confetti trigger helper
   const triggerConfetti = useCallback(() => {
@@ -754,6 +762,13 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .sort((a, b) => a.order_index - b.order_index);
   }, [dailyTasks, todayStr]);
 
+  // Tomorrow's Tasks
+  const tomorrowTasks = useMemo(() => {
+    return dailyTasks
+      .filter((task) => task.date_assigned === tomorrowStr)
+      .sort((a, b) => a.order_index - b.order_index);
+  }, [dailyTasks, tomorrowStr]);
+
   // All unique dates from tasks for History view
   const historyDates = useMemo(() => {
     const dates = Array.from(new Set(dailyTasks.map((t) => t.date_assigned)));
@@ -781,7 +796,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Math.round((completedCount / todaysTasks.length) * 100);
   }, [todaysTasks]);
 
-  // Add Daily Task (with Deduplication against active tasks)
+  // Add Daily Task (Supports Today, Tomorrow, and Deduplication)
   const addDailyTask = useCallback(
     async (
       title: string,
@@ -792,8 +807,9 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!title.trim()) return { success: false, message: 'Task title cannot be empty' };
       const trimmedTitle = title.trim();
       const targetDate = date || getTodayDateString();
+      const isTargetTomorrow = targetDate === tomorrowStr;
 
-      // Deduplication check: check if an active/incomplete task with matching title already exists
+      // Deduplication check: check if an active/incomplete task with matching title already exists for target date
       const isDuplicate = dailyTasks.some(
         (t) =>
           t.date_assigned === targetDate &&
@@ -806,7 +822,9 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         return {
           success: false,
           duplicate: true,
-          message: 'Task is already active on today’s list',
+          message: isTargetTomorrow
+            ? 'Task is already on tomorrow’s list'
+            : 'Task is already active on today’s list',
         };
       }
 
@@ -848,7 +866,40 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return { success: true, task: newTask };
     },
-    [dailyTasks, userId, authUser, supabaseConfig]
+    [dailyTasks, userId, authUser, supabaseConfig, tomorrowStr]
+  );
+
+  // Move Task from Tomorrow (or any date) to Today
+  const moveTaskToToday = useCallback(
+    async (taskId: string) => {
+      const today = getTodayDateString();
+      const task = dailyTasks.find((t) => t.id === taskId);
+      if (!task) return;
+
+      const todayTasks = dailyTasks.filter((t) => t.date_assigned === today);
+      const maxOrder = todayTasks.length > 0 ? Math.max(...todayTasks.map((t) => t.order_index)) : -1;
+
+      // 1. Optimistic Local State Update
+      const updatedTasks = dailyTasks.map((t) =>
+        t.id === taskId
+          ? { ...t, date_assigned: today, order_index: maxOrder + 1 }
+          : t
+      );
+      setDailyTasks(updatedTasks);
+      StorageService.saveDailyTasks(updatedTasks);
+      playSound('complete');
+
+      // 2. Cloud DB Update
+      if (supabaseConfig.enabled && authUser.isAuthenticated) {
+        try {
+          await moveTaskToTodayRPC(taskId, supabaseConfig);
+          await refreshTasks();
+        } catch (e) {
+          console.warn('[TaskContext] moveTaskToToday error:', e);
+        }
+      }
+    },
+    [dailyTasks, supabaseConfig, authUser.isAuthenticated, refreshTasks, playSound]
   );
 
   // Clear All Tasks from Today's Daily List
@@ -1172,22 +1223,24 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Reorder Daily Tasks
   const reorderDailyTasks = useCallback(
     async (activeId: string, overId: string) => {
-      const today = getTodayDateString();
-      const currentTodayTasks = dailyTasks
-        .filter((t) => t.date_assigned === today)
+      const targetTask = dailyTasks.find((t) => t.id === activeId);
+      const targetDate = targetTask?.date_assigned || todayStr;
+
+      const currentTasksInDate = dailyTasks
+        .filter((t) => t.date_assigned === targetDate)
         .sort((a, b) => a.order_index - b.order_index);
 
-      const oldIndex = currentTodayTasks.findIndex((t) => t.id === activeId);
-      const newIndex = currentTodayTasks.findIndex((t) => t.id === overId);
+      const oldIndex = currentTasksInDate.findIndex((t) => t.id === activeId);
+      const newIndex = currentTasksInDate.findIndex((t) => t.id === overId);
 
       if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return;
 
-      const reordered = arrayMove(currentTodayTasks, oldIndex, newIndex).map((task, idx) => ({
+      const reordered = arrayMove(currentTasksInDate, oldIndex, newIndex).map((task, idx) => ({
         ...task,
         order_index: idx,
       }));
 
-      const otherTasks = dailyTasks.filter((t) => t.date_assigned !== today);
+      const otherTasks = dailyTasks.filter((t) => t.date_assigned !== targetDate);
       const allUpdated = [...otherTasks, ...reordered];
       setDailyTasks(allUpdated);
       StorageService.saveDailyTasks(allUpdated);
@@ -1206,7 +1259,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
     },
-    [dailyTasks, supabaseConfig, authUser.isAuthenticated]
+    [dailyTasks, supabaseConfig, authUser.isAuthenticated, todayStr]
   );
 
   // Add Pool Task (with Notes & Color)
@@ -1472,6 +1525,9 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         handleSignOut,
         dailyTasks,
         todaysTasks,
+        tomorrowTasks,
+        todayStr,
+        tomorrowStr,
         historyDates,
         getTasksForDate,
         addDailyTask,
@@ -1481,6 +1537,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         updateDailyTaskColor,
         deleteDailyTask,
         reorderDailyTasks,
+        moveTaskToToday,
         clearAllDailyTasks,
         endDay,
         resumeDay,

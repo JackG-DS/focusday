@@ -337,7 +337,7 @@ begin
 end;
 $$;
 
--- Helper: Push template to today's daily tasks (preserving notes & color)
+-- Helper: Push template to today's daily tasks (preserving notes & color, prevents duplicate active tasks)
 create or replace function push_template_to_daily(p_title text, p_notes text default null, p_color text default null)
 returns public.daily_tasks
 language plpgsql
@@ -346,7 +346,20 @@ as $$
 declare
   v_max_order integer;
   v_new_task public.daily_tasks;
+  v_existing_id uuid;
 begin
+  select id into v_existing_id
+  from public.daily_tasks
+  where user_id = auth.uid()
+    and date_assigned = current_date
+    and lower(trim(title)) = lower(trim(p_title))
+    and completed = false
+  limit 1;
+
+  if v_existing_id is not null then
+    return null;
+  end if;
+
   select coalesce(max(order_index), 0) + 1 into v_max_order
   from public.daily_tasks
   where user_id = auth.uid() and date_assigned = current_date;
@@ -356,6 +369,68 @@ begin
   returning * into v_new_task;
 
   return v_new_task;
+end;
+$$;
+
+-- Helper: Add task for tomorrow
+create or replace function add_task_for_tomorrow(p_title text, p_notes text default null, p_color text default null)
+returns public.daily_tasks
+language plpgsql
+security invoker
+as $$
+declare
+  v_tomorrow date;
+  v_max_order integer;
+  v_new_task public.daily_tasks;
+  v_existing_id uuid;
+begin
+  v_tomorrow := current_date + 1;
+
+  select id into v_existing_id
+  from public.daily_tasks
+  where user_id = auth.uid()
+    and date_assigned = v_tomorrow
+    and lower(trim(title)) = lower(trim(p_title))
+    and completed = false
+  limit 1;
+
+  if v_existing_id is not null then
+    return null;
+  end if;
+
+  select coalesce(max(order_index), 0) + 1 into v_max_order
+  from public.daily_tasks
+  where user_id = auth.uid() and date_assigned = v_tomorrow;
+
+  insert into public.daily_tasks (user_id, title, notes, color, completed, order_index, date_assigned)
+  values (auth.uid(), p_title, p_notes, p_color, false, v_max_order, v_tomorrow)
+  returning * into v_new_task;
+
+  return v_new_task;
+end;
+$$;
+
+-- Helper: Move task from tomorrow to today
+create or replace function move_task_to_today(p_task_id uuid)
+returns public.daily_tasks
+language plpgsql
+security invoker
+as $$
+declare
+  v_max_order integer;
+  v_updated_task public.daily_tasks;
+begin
+  select coalesce(max(order_index), 0) + 1 into v_max_order
+  from public.daily_tasks
+  where user_id = auth.uid() and date_assigned = current_date;
+
+  update public.daily_tasks
+  set date_assigned = current_date,
+      order_index = v_max_order
+  where id = p_task_id and user_id = auth.uid()
+  returning * into v_updated_task;
+
+  return v_updated_task;
 end;
 $$;`;
 

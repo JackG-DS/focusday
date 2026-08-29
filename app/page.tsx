@@ -12,6 +12,7 @@ import { BonusCelebrationModal } from '@/components/BonusCelebrationModal';
 import { BottomNav } from '@/components/BottomNav';
 import { PWAInstallBanner } from '@/components/PWAInstallBanner';
 import { SyncErrorBanner } from '@/components/SyncErrorBanner';
+import { TomorrowPreview } from '@/components/TomorrowPreview';
 import { useTaskContext } from '@/context/TaskContext';
 
 export default function Home() {
@@ -52,6 +53,7 @@ export default function Home() {
           <div className="space-y-4 animate-fade-in">
             <TaskInput />
             <DailyTaskList />
+            <TomorrowPreview />
           </div>
         )}
 

@@ -225,3 +225,45 @@ export async function pushTemplateToDailyRPC(
     error: error ? new Error(error.message) : null,
   };
 }
+
+// RPC Helper: Add task for tomorrow
+export async function addTaskForTomorrowRPC(
+  title: string,
+  notes?: string | null,
+  color?: string | null,
+  config?: SupabaseConfig
+): Promise<{ data: DailyTask | null; error: Error | null }> {
+  const client = getSupabaseClient(config);
+  if (!client) {
+    return { data: null, error: new Error('Supabase client is not configured') };
+  }
+
+  const { data, error } = await client.rpc('add_task_for_tomorrow', {
+    p_title: title,
+    p_notes: notes || null,
+    p_color: color || null,
+  });
+  return {
+    data: (data as DailyTask) || null,
+    error: error ? new Error(error.message) : null,
+  };
+}
+
+// RPC Helper: Move task from tomorrow to today
+export async function moveTaskToTodayRPC(
+  taskId: string,
+  config?: SupabaseConfig
+): Promise<{ data: DailyTask | null; error: Error | null }> {
+  const client = getSupabaseClient(config);
+  if (!client) {
+    return { data: null, error: new Error('Supabase client is not configured') };
+  }
+
+  const { data, error } = await client.rpc('move_task_to_today', {
+    p_task_id: taskId,
+  });
+  return {
+    data: (data as DailyTask) || null,
+    error: error ? new Error(error.message) : null,
+  };
+}
