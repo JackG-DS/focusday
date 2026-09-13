@@ -229,8 +229,8 @@ begin
 end;
 $$;
 
--- Helper: Pull one random pool task and move it into today's daily list (preserving notes & color)
-create or replace function pull_bonus_task()
+-- Helper: Pull one random pool task and copy it into today's daily list (preserving notes & color, preserving pool item)
+create or replace function pull_bonus_task(p_today date default current_date)
 returns public.daily_tasks
 language plpgsql
 security invoker
@@ -240,9 +240,12 @@ declare
   v_title text;
   v_notes text;
   v_color text;
+  v_target_date date;
   v_new_task public.daily_tasks;
   v_max_order integer;
 begin
+  v_target_date := coalesce(p_today, current_date);
+
   select id, title, notes, color into v_pool_id, v_title, v_notes, v_color
   from public.pool_tasks
   where user_id = auth.uid()
@@ -255,13 +258,13 @@ begin
 
   select coalesce(max(order_index), 0) + 1 into v_max_order
   from public.daily_tasks
-  where user_id = auth.uid() and date_assigned = current_date;
+  where user_id = auth.uid() and date_assigned = v_target_date;
 
   insert into public.daily_tasks (user_id, title, notes, color, completed, order_index, date_assigned)
-  values (auth.uid(), v_title, v_notes, v_color, false, v_max_order, current_date)
+  values (auth.uid(), v_title, v_notes, v_color, false, v_max_order, v_target_date)
   returning * into v_new_task;
 
-  delete from public.pool_tasks where id = v_pool_id;
+  -- The Bonus Pool acts as an indefinite library/reservoir: do NOT delete from pool_tasks.
 
   return v_new_task;
 end;

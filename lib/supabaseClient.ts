@@ -143,14 +143,18 @@ export async function rolloverIncompleteTasksRPC(
 
 // RPC Helper: Pull a bonus task when all items are checked
 export async function pullBonusTaskRPC(
-  config?: SupabaseConfig
+  config?: SupabaseConfig,
+  p_today?: string
 ): Promise<{ data: DailyTask | null; error: Error | null }> {
   const client = getSupabaseClient(config);
   if (!client) {
     return { data: null, error: new Error('Supabase client is not configured') };
   }
 
-  const { data, error } = await client.rpc('pull_bonus_task');
+  const { data, error } = await client.rpc(
+    'pull_bonus_task',
+    p_today ? { p_today } : undefined
+  );
   return {
     data: (data as DailyTask) || null,
     error: error ? new Error(error.message) : null,

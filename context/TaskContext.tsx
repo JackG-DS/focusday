@@ -1051,32 +1051,36 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     async (specificId?: string): Promise<DailyTask | null> => {
       if (poolTasks.length === 0 && !specificId) return null;
 
+      const localToday = getLocalDateString();
+
       if (supabaseConfig.enabled && authUser.isAuthenticated && !specificId) {
         try {
-          const { data: bonusTask, error } = await pullBonusTaskRPC(supabaseConfig);
-          if (error || !bonusTask || typeof bonusTask !== 'object' || !bonusTask.id) {
-            console.log('[TaskContext] No bonus tasks available from cloud.');
-            return null;
-          }
+          const supabase = getSupabaseClient(supabaseConfig);
+          if (supabase) {
+            const { data: bonusTask, error } = await supabase.rpc('pull_bonus_task', {
+              p_today: localToday,
+            });
+            if (error || !bonusTask || typeof bonusTask !== 'object' || !bonusTask.id) {
+              console.log('[TaskContext] No bonus tasks available from cloud.');
+              return null;
+            }
 
-          setDailyTasks((prev) => {
-            if (prev.some((t) => t.id === bonusTask.id)) return prev;
-            const updated = [...prev, bonusTask];
-            StorageService.saveDailyTasks(updated);
-            return updated;
-          });
-          setPoolTasks((prev) => {
-            const updated = prev.filter((p) => p.title !== bonusTask.title && p.id !== bonusTask.id);
-            StorageService.savePoolTasks(updated);
-            return updated;
-          });
-          return bonusTask;
+            setDailyTasks((prev) => {
+              if (prev.some((t) => t.id === bonusTask.id)) return prev;
+              const updated = [...prev, bonusTask];
+              StorageService.saveDailyTasks(updated);
+              return updated;
+            });
+            // Preserved: The Bonus Pool acts as an indefinite library/reservoir.
+            // Do NOT remove from poolTasks frontend state or pool_tasks table.
+            return bonusTask;
+          }
         } catch (rpcErr) {
           console.warn('[TaskContext] RPC pull_bonus_task fallback:', rpcErr);
         }
       }
 
-      // Client-side fallback
+      // Client-side fallback or specific task pull (e.g. manual pull)
       let chosenPoolTask: PoolTask;
       if (specificId) {
         const found = poolTasks.find((p) => p.id === specificId);
@@ -1089,12 +1093,9 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       if (!chosenPoolTask || !chosenPoolTask.id) return null;
 
-      const updatedPool = poolTasks.filter((p) => p.id !== chosenPoolTask.id);
-      setPoolTasks(updatedPool);
-      StorageService.savePoolTasks(updatedPool);
-
-      const today = getTodayDateString();
-      const todayDaily = dailyTasks.filter((t) => t.date_assigned === today);
+      // Preserved: The Bonus Pool acts as an indefinite library/reservoir.
+      // Pulling should only instantiate a new copy into dailyTasks.
+      const todayDaily = dailyTasks.filter((t) => t.date_assigned === localToday);
       const maxOrder = todayDaily.length > 0 ? Math.max(...todayDaily.map((t) => t.order_index)) : -1;
 
       const currentActiveUserId = authUser.isAuthenticated ? authUser.id : userId;
@@ -1107,7 +1108,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         color: chosenPoolTask.color || 'default',
         completed: false,
         order_index: maxOrder + 1,
-        date_assigned: today,
+        date_assigned: localToday,
         created_at: new Date().toISOString(),
       };
 
@@ -1121,10 +1122,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const client = getSupabaseClient(supabaseConfig);
         if (client) {
           try {
-            await Promise.all([
-              client.from('pool_tasks').delete().eq('id', chosenPoolTask.id),
-              client.from('daily_tasks').insert(newDailyTask),
-            ]);
+            // Only insert into daily_tasks; DO NOT delete from pool_tasks!
+            await client.from('daily_tasks').insert(newDailyTask);
           } catch (e) {
             console.warn('Failed to sync pulled bonus task to cloud:', e);
           }
@@ -1200,7 +1199,10 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             const client = getSupabaseClient(supabaseConfig);
             if (client) {
               try {
-                const { data: bonusTask, error } = await client.rpc('pull_bonus_task');
+                const localToday = getLocalDateString();
+                const { data: bonusTask, error } = await client.rpc('pull_bonus_task', {
+                  p_today: localToday,
+                });
                 if (error || !bonusTask || typeof bonusTask !== 'object' || !bonusTask.id) {
                   console.log('[TaskContext] No bonus tasks available in pool.');
                   return;
@@ -1213,11 +1215,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   StorageService.saveDailyTasks(next);
                   return next;
                 });
-                setPoolTasks((prev) => {
-                  const next = prev.filter((p) => p.title !== bonusTask.title && p.id !== bonusTask.id);
-                  StorageService.savePoolTasks(next);
-                  return next;
-                });
+                // Preserved: The Bonus Pool acts as an indefinite library/reservoir.
+                // Pulling only instantiates a new copy into dailyTasks.
                 await refreshTasks();
               } catch (rpcErr) {
                 console.warn('[TaskContext] pull_bonus_task RPC failed:', rpcErr);

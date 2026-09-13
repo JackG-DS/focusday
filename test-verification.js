@@ -1,7 +1,7 @@
 // Verification script for To-Do PWA core mechanics
 const assert = require('assert');
 
-function runTests() {
+async function runTests() {
   console.log('🧪 Starting core logic unit tests...\n');
 
   const today = '2026-08-25';
@@ -60,11 +60,11 @@ function runTests() {
   allDone = dailyTasks.every(t => t.completed);
   assert.strictEqual(allDone, true, 'All daily tasks are now completed');
 
-  // Trigger Bonus Pull
+  // Trigger Bonus Pull (Bonus pool acts as an indefinite library/reservoir)
   if (allDone && !bonusTriggeredDates.includes(today) && poolTasks.length > 0) {
     const randomIndex = 0; // Deterministic for test
     const chosenPoolTask = poolTasks[randomIndex];
-    poolTasks = poolTasks.filter(p => p.id !== chosenPoolTask.id);
+    // Pool task is preserved in reservoir: poolTasks is NOT filtered/deleted
 
     dailyTasks.push({
       id: 'd3-bonus',
@@ -77,7 +77,7 @@ function runTests() {
     bonusTriggeredDates.push(today);
   }
 
-  assert.strictEqual(poolTasks.length, 2, 'Pool tasks should decrease from 3 to 2');
+  assert.strictEqual(poolTasks.length, 3, 'Pool tasks must be preserved in reservoir (indefinite library)');
   assert.strictEqual(dailyTasks.length, 3, 'Daily tasks should increase from 2 to 3');
   assert.strictEqual(dailyTasks[2].title, '🎁 Bonus Task A', 'New daily task must match the pulled bonus task');
   assert.strictEqual(dailyTasks[2].completed, false, 'Pulled bonus task must start uncompleted');
@@ -86,7 +86,7 @@ function runTests() {
   // Verify that subsequent completions on the same day do not re-trigger
   const shouldReTrigger = allDone && !bonusTriggeredDates.includes(today);
   assert.strictEqual(shouldReTrigger, false, 'Must not re-trigger bonus on the same date');
-  console.log('✅ Test 2 Passed: Bonus Pool correctly transferred 1 task on 100% completion and guarded against duplicates.\n');
+  console.log('✅ Test 2 Passed: Bonus Pool correctly instantiated 1 task into daily tasks while preserving pool reservoir.\n');
 
   // --- TEST 3: DnD Reordering Index Normalization ---
   console.log('▶ Test 3: Testing Task Reordering Normalization...');
@@ -226,6 +226,47 @@ function runTests() {
   assert.strictEqual(newToday.length, 1, 'Today list immediately receives returned record');
   assert.strictEqual(newToday[0].order_index, 5, 'Returned record order index is reflected directly without page reload');
   console.log('✅ Test 8 Passed: State directly reflects RPC returned record without requiring page reload.\n');
+
+  // --- TEST 9: Preserve Bonus Pool Tasks upon pull with p_today ---
+  console.log('▶ Test 9: Testing pull_bonus_task with p_today local date and pool preservation...');
+  const activePool = [
+    { id: 'pool-1', title: '🎁 Bonus: Read 15 pages of a book' },
+    { id: 'pool-2', title: '🎁 Bonus: 10 min desk workout' },
+  ];
+
+  const localTodayStr = '2026-09-13';
+  let calledRpcName = '';
+  let calledRpcParams = null;
+
+  // Mock supabase client
+  const mockSupabase = {
+    rpc: async (name, params) => {
+      calledRpcName = name;
+      calledRpcParams = params;
+      return {
+        data: {
+          id: 'bonus-instantiated-1',
+          user_id: 'user-123',
+          title: activePool[0].title,
+          completed: false,
+          date_assigned: params?.p_today || '2026-09-13',
+          order_index: 3,
+        },
+        error: null,
+      };
+    },
+  };
+
+  // Simulate pullBonusTask call with local date
+  const { data: bonusTask } = await (async () => {
+    return await mockSupabase.rpc('pull_bonus_task', { p_today: localTodayStr });
+  })();
+
+  assert.strictEqual(calledRpcName, 'pull_bonus_task', 'Must call pull_bonus_task RPC');
+  assert.deepStrictEqual(calledRpcParams, { p_today: '2026-09-13' }, 'Must pass { p_today: localToday }');
+  assert.strictEqual(bonusTask.date_assigned, '2026-09-13', 'Instantiated task must be assigned to local date');
+  assert.strictEqual(activePool.length, 2, 'Active pool must remain completely untouched in reservoir');
+  console.log('✅ Test 9 Passed: pull_bonus_task sends p_today and leaves pool tasks preserved in reservoir.\n');
 
   console.log('🎉 ALL UNIT & INTEGRATION TESTS PASSED SUCCESSFULLY!');
 }

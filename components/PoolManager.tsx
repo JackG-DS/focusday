@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Gift, Plus, Trash2, ArrowUpRight, Sparkles, HelpCircle, Dices } from 'lucide-react';
+import { Gift, Plus, Trash2, ArrowUpRight, Sparkles } from 'lucide-react';
 import { useTaskContext } from '@/context/TaskContext';
 
 export const PoolManager: React.FC = () => {
@@ -12,7 +12,6 @@ export const PoolManager: React.FC = () => {
     deletePoolTask,
     pullBonusTaskToToday,
     setActiveTab,
-    triggerConfetti,
   } = useTaskContext();
 
   const handleAdd = (e: React.FormEvent) => {
@@ -25,12 +24,6 @@ export const PoolManager: React.FC = () => {
 
   const handleManualPull = async (id: string) => {
     await pullBonusTaskToToday(id);
-    setActiveTab('today');
-  };
-
-  const handleTestRandomPull = async () => {
-    triggerConfetti();
-    await pullBonusTaskToToday();
     setActiveTab('today');
   };
 
@@ -56,17 +49,10 @@ export const PoolManager: React.FC = () => {
         </div>
 
         {poolTasks.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-indigo-200/40 dark:border-indigo-800/40 flex items-center justify-between">
+          <div className="mt-3 pt-3 border-t border-indigo-200/40 dark:border-indigo-800/40 flex items-center">
             <span className="text-xs text-indigo-700 dark:text-indigo-300 font-medium flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5" /> Auto-reward ready
+              <Sparkles className="w-3.5 h-3.5" /> Auto-reward ready (unlocked upon 100% daily completion)
             </span>
-            <button
-              onClick={handleTestRandomPull}
-              className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white rounded-lg transition-all shadow-xs"
-            >
-              <Dices className="w-3.5 h-3.5" />
-              <span>Test Random Pull</span>
-            </button>
           </div>
         )}
       </div>
