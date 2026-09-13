@@ -294,14 +294,14 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // =========================================================================
   // Manual & On-Load Refresh Method (Only Reads from Supabase)
   // =========================================================================
-  const refreshTasks = useCallback(async () => {
+  const refreshTasks = useCallback(async (overrideUserId?: string) => {
     if (!supabaseConfig.enabled || !supabaseConfig.url || !supabaseConfig.anonKey) {
       setIsSyncing(false);
       setSyncStatus('idle');
       return;
     }
 
-    const targetUserId = authUser.isAuthenticated ? authUser.id : userId;
+    const targetUserId = overrideUserId || (authUser.isAuthenticated ? authUser.id : userId);
     if (!targetUserId || targetUserId === 'local-user') {
       setIsSyncing(false);
       setSyncStatus('idle');
@@ -326,7 +326,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await Promise.race([
         (async () => {
-          const today = todayStr;
+          const localToday = getLocalDateString();
+          const localTomorrow = getTomorrowDateString();
 
           // 1. Fetch Remote User Settings
           try {
@@ -360,54 +361,76 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.log('[TaskContext] Daily reset threshold reached. Clearing completed tasks...');
             try {
               await clearCompletedTasksRPC(supabaseConfig);
-              updateSettings({ last_reset_date: today, day_ended_date: null });
+              updateSettings({ last_reset_date: localToday, day_ended_date: null });
             } catch (resetErr) {
               console.warn('[TaskContext] clear_completed_tasks RPC error:', resetErr);
             }
           }
 
           // 1. First, call rollover_incomplete_tasks
-          await supabase.rpc('rollover_incomplete_tasks');
+          try {
+            await supabase.rpc('rollover_incomplete_tasks');
+          } catch (rolloverErr) {
+            console.warn('[TaskContext] rollover_incomplete_tasks RPC error:', rolloverErr);
+          }
 
           // 2. Second, call generate_due_recurring_tasks with local date parameter
-          await supabase.rpc('generate_due_recurring_tasks', { p_today: todayStr });
+          try {
+            await supabase.rpc('generate_due_recurring_tasks', { p_today: localToday });
+          } catch (recurringRpcErr) {
+            console.warn('[TaskContext] generate_due_recurring_tasks RPC error:', recurringRpcErr);
+          }
 
           // 3. Third, fetch daily_tasks for today and tomorrow and update state:
-          // Main Today List: .from('daily_tasks').select('*').eq('date_assigned', todayStr)
-          // Tomorrow Preview: .from('daily_tasks').select('*').eq('date_assigned', tomorrowStr)
-          const [todayRes, tomorrowRes, poolRes, recurringRes] = await Promise.all([
-            supabase
-              .from('daily_tasks')
-              .select('*')
-              .eq('date_assigned', todayStr)
-              .order('order_index', { ascending: true }),
-            supabase
-              .from('daily_tasks')
-              .select('*')
-              .eq('date_assigned', tomorrowStr)
-              .order('order_index', { ascending: true }),
-            supabase.from('pool_tasks').select('*').order('created_at', { ascending: false }),
-            supabase.from('recurring_tasks').select('*').order('created_at', { ascending: false }),
-          ]);
+          // Date Filter Guard: Main Today List
+          const { data, error } = await supabase
+            .from('daily_tasks')
+            .select('*')
+            .eq('date_assigned', localToday)
+            .order('order_index', { ascending: true });
 
-          if (todayRes.error) {
-            console.error('[TaskContext] Fetch error (daily_tasks today):', todayRes.error);
-            throw new Error(todayRes.error.message);
-          }
-          if (tomorrowRes.error) {
-            console.error('[TaskContext] Fetch error (daily_tasks tomorrow):', tomorrowRes.error);
-            throw new Error(tomorrowRes.error.message);
-          }
-          if (poolRes.error) {
-            console.error('[TaskContext] Fetch error (pool_tasks):', poolRes.error);
-            throw new Error(poolRes.error.message);
+          if (error) {
+            console.error('[TaskContext] Fetch error:', error);
           }
 
-          const cloudToday: DailyTask[] = todayRes.data || [];
-          const cloudTomorrow: DailyTask[] = tomorrowRes.data || [];
+          // Tomorrow Preview List
+          const { data: tomorrowData, error: tomorrowError } = await supabase
+            .from('daily_tasks')
+            .select('*')
+            .eq('date_assigned', localTomorrow)
+            .order('order_index', { ascending: true });
+
+          if (tomorrowError) {
+            console.error('[TaskContext] Fetch error (daily_tasks tomorrow):', tomorrowError);
+          }
+
+          let cloudPool: PoolTask[] = [];
+          let cloudRecurring: RecurringTask[] = [];
+
+          try {
+            const [poolRes, recurringRes] = await Promise.all([
+              supabase.from('pool_tasks').select('*').order('created_at', { ascending: false }),
+              supabase.from('recurring_tasks').select('*').order('created_at', { ascending: false }),
+            ]);
+
+            if (poolRes.error) {
+              console.error('[TaskContext] Fetch error (pool_tasks):', poolRes.error);
+            } else {
+              cloudPool = poolRes.data || [];
+            }
+
+            if (recurringRes.error) {
+              console.error('[TaskContext] Fetch error (recurring_tasks):', recurringRes.error);
+            } else {
+              cloudRecurring = recurringRes.data || [];
+            }
+          } catch (extraErr) {
+            console.error('[TaskContext] Fetch error (pool/recurring):', extraErr);
+          }
+
+          const cloudToday: DailyTask[] = data || [];
+          const cloudTomorrow: DailyTask[] = tomorrowData || [];
           const cloudDaily: DailyTask[] = [...cloudToday, ...cloudTomorrow];
-          const cloudPool: PoolTask[] = poolRes.data || [];
-          const cloudRecurring: RecurringTask[] = recurringRes?.data || [];
 
           console.log('[TaskContext] Tasks fetched from cloud:', {
             todayCount: cloudToday.length,
@@ -416,23 +439,17 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             recurringCount: cloudRecurring.length,
           });
 
-          // Strictly overwrite state and sync local cache with truth from database
-          setDailyTasks((prev) => {
-            const otherTasks = prev.filter(
-              (t) => t.date_assigned !== todayStr && t.date_assigned !== tomorrowStr
-            );
-            const merged = [...otherTasks, ...cloudDaily];
-            StorageService.saveDailyTasks(merged);
-            return merged;
-          });
+          // Disable Offline LocalStorage Overwrite for Authenticated Users:
+          // When a user is authenticated, do NOT merge stale local storage tasks into Supabase query results.
+          // The Supabase database must be the single source of truth upon login.
+          setDailyTasks(cloudDaily);
+          StorageService.saveDailyTasks(cloudDaily);
 
           setPoolTasks(cloudPool);
           StorageService.savePoolTasks(cloudPool);
 
-          if (!recurringRes.error) {
-            setRecurringTasks(cloudRecurring);
-            StorageService.saveRecurringTasks(cloudRecurring);
-          }
+          setRecurringTasks(cloudRecurring);
+          StorageService.saveRecurringTasks(cloudRecurring);
 
           setSyncStatus('synced');
           setSyncErrorMessage(null);
@@ -451,8 +468,6 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     supabaseConfig,
     authUser,
     userId,
-    todayStr,
-    tomorrowStr,
     settings.reset_time,
     settings.last_reset_date,
     checkShouldReset,
@@ -605,46 +620,48 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Sequence on session init:
             // 1. First, call rollover_incomplete_tasks
             // 2. Second, call generate_due_recurring_tasks with local date parameter
-            // 3. Third, fetch daily_tasks for today and tomorrow and update state:
-            // Main Today List: .from('daily_tasks').select('*').eq('date_assigned', todayStr)
-            // Tomorrow Preview: .from('daily_tasks').select('*').eq('date_assigned', tomorrowStr)
+            // 3. Third, fetch daily_tasks for today and tomorrow and update state
             const supabase = getSupabaseClient(loadedSupabase);
             if (supabase) {
               try {
+                const localToday = getLocalDateString();
+                const localTomorrow = getTomorrowDateString();
+
                 // 1. First, call rollover_incomplete_tasks
                 await supabase.rpc('rollover_incomplete_tasks');
 
                 // 2. Second, call generate_due_recurring_tasks with local date parameter
-                await supabase.rpc('generate_due_recurring_tasks', { p_today: todayStr });
+                await supabase.rpc('generate_due_recurring_tasks', { p_today: localToday });
 
                 // 3. Third, fetch daily_tasks for today and tomorrow and update state
-                const [todayRes, tomorrowRes] = await Promise.all([
-                  supabase
-                    .from('daily_tasks')
-                    .select('*')
-                    .eq('date_assigned', todayStr)
-                    .order('order_index', { ascending: true }),
-                  supabase
-                    .from('daily_tasks')
-                    .select('*')
-                    .eq('date_assigned', tomorrowStr)
-                    .order('order_index', { ascending: true }),
-                ]);
+                const { data, error } = await supabase
+                  .from('daily_tasks')
+                  .select('*')
+                  .eq('date_assigned', localToday)
+                  .order('order_index', { ascending: true });
 
-                if (!todayRes.error && !tomorrowRes.error) {
-                  const cloudToday = todayRes.data || [];
-                  const cloudTomorrow = tomorrowRes.data || [];
-                  const cloudDaily = [...cloudToday, ...cloudTomorrow];
-
-                  setDailyTasks((prev) => {
-                    const otherTasks = prev.filter(
-                      (t) => t.date_assigned !== todayStr && t.date_assigned !== tomorrowStr
-                    );
-                    const merged = [...otherTasks, ...cloudDaily];
-                    StorageService.saveDailyTasks(merged);
-                    return merged;
-                  });
+                if (error) {
+                  console.error('[TaskContext] Fetch error:', error);
                 }
+
+                const { data: tomorrowData, error: tomorrowError } = await supabase
+                  .from('daily_tasks')
+                  .select('*')
+                  .eq('date_assigned', localTomorrow)
+                  .order('order_index', { ascending: true });
+
+                if (tomorrowError) {
+                  console.error('[TaskContext] Fetch error (daily_tasks tomorrow):', tomorrowError);
+                }
+
+                const cloudToday: DailyTask[] = data || [];
+                const cloudTomorrow: DailyTask[] = tomorrowData || [];
+                const cloudDaily: DailyTask[] = [...cloudToday, ...cloudTomorrow];
+
+                // Disable Offline LocalStorage Overwrite for Authenticated Users:
+                // Supabase database must be single source of truth upon login.
+                setDailyTasks(cloudDaily);
+                StorageService.saveDailyTasks(cloudDaily);
               } catch (initRpcErr) {
                 console.warn('[TaskContext] Initial daily RPC init skipped:', initRpcErr);
               }
@@ -751,16 +768,18 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const supabase = getSupabaseClient(supabaseConfig);
           if (supabase) {
+            const localToday = getLocalDateString();
             await supabase.rpc('rollover_incomplete_tasks');
-            await supabase.rpc('generate_due_recurring_tasks', { p_today: todayStr });
+            await supabase.rpc('generate_due_recurring_tasks', { p_today: localToday });
           }
         } catch {}
 
+        await refreshTasks(result.user.id);
         return true;
       }
       return false;
     },
-    [supabaseConfig, todayStr]
+    [supabaseConfig, refreshTasks]
   );
 
   // Sign Up Handler
@@ -788,16 +807,18 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const supabase = getSupabaseClient(supabaseConfig);
           if (supabase) {
+            const localToday = getLocalDateString();
             await supabase.rpc('rollover_incomplete_tasks');
-            await supabase.rpc('generate_due_recurring_tasks', { p_today: todayStr });
+            await supabase.rpc('generate_due_recurring_tasks', { p_today: localToday });
           }
         } catch {}
 
+        await refreshTasks(result.user.id);
         return true;
       }
       return false;
     },
-    [supabaseConfig, todayStr]
+    [supabaseConfig, refreshTasks]
   );
 
   // Sign Out Handler
@@ -811,6 +832,12 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       isAuthenticated: false,
     });
     setUserId(localUid);
+    const localDaily = StorageService.getDailyTasks(localUid);
+    const localPool = StorageService.getPoolTasks(localUid);
+    const localRecurring = StorageService.getRecurringTasks(localUid);
+    setDailyTasks(localDaily);
+    setPoolTasks(localPool);
+    setRecurringTasks(localRecurring);
     setAuthLoading(false);
     setSyncStatus('idle');
     setIsSyncing(false);
@@ -955,36 +982,48 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const task = dailyTasks.find((t) => t.id === taskId);
       if (!task) return;
 
-      const currentTodayTasks = dailyTasks.filter((t) => t.date_assigned === todayStr);
+      const localToday = getLocalDateString();
+      const currentTodayTasks = dailyTasks.filter((t) => t.date_assigned === localToday);
       const maxOrder = currentTodayTasks.length > 0 ? Math.max(...currentTodayTasks.map((t) => t.order_index)) : -1;
 
       // 1. Optimistic Local State Update: cleanly transitions item between tomorrowTasks and todaysTasks
       const updatedTasks = dailyTasks.map((t) =>
         t.id === taskId
-          ? { ...t, date_assigned: todayStr, order_index: maxOrder + 1 }
+          ? { ...t, date_assigned: localToday, order_index: maxOrder + 1 }
           : t
       );
       setDailyTasks(updatedTasks);
       StorageService.saveDailyTasks(updatedTasks);
       playSound('complete');
 
-      // 2. Cloud DB Update
+      // 2. Cloud DB Update: Call move_task_to_date with localToday and update state directly with returned record
       if (supabaseConfig.enabled && authUser.isAuthenticated) {
         const supabase = getSupabaseClient(supabaseConfig);
         if (supabase) {
           try {
-            await supabase.rpc('move_task_to_date', { 
+            const { data, error } = await supabase.rpc('move_task_to_date', { 
               p_task_id: taskId, 
-              p_new_date: todayStr 
+              p_new_date: localToday 
             });
-            await refreshTasks();
+
+            if (error) {
+              console.error('[TaskContext] move_task_to_date error:', error);
+            } else if (data) {
+              // Update state directly with the returned record without relying on a full page reload
+              const returnedTask = data as DailyTask;
+              setDailyTasks((prev) => {
+                const next = prev.map((t) => (t.id === taskId ? returnedTask : t));
+                StorageService.saveDailyTasks(next);
+                return next;
+              });
+            }
           } catch (e) {
             console.warn('[TaskContext] moveTaskToToday error:', e);
           }
         }
       }
     },
-    [dailyTasks, todayStr, supabaseConfig, authUser.isAuthenticated, refreshTasks, playSound]
+    [dailyTasks, supabaseConfig, authUser.isAuthenticated, playSound]
   );
 
   // Clear All Tasks from Today's Daily List

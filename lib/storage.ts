@@ -150,10 +150,14 @@ export const StorageService = {
     if (typeof window === 'undefined') return [];
     const raw = localStorage.getItem(STORAGE_KEYS.DAILY_TASKS);
     if (!raw) {
-      const today = getTodayDateString();
-      const initial = INITIAL_DAILY_TASKS(userId, today);
-      this.saveDailyTasks(initial);
-      return initial;
+      // Only seed initial mock tasks for unauthenticated / anonymous local-user
+      if (!userId || userId === 'local-user') {
+        const today = getTodayDateString();
+        const initial = INITIAL_DAILY_TASKS(userId || 'local-user', today);
+        this.saveDailyTasks(initial);
+        return initial;
+      }
+      return [];
     }
     try {
       return JSON.parse(raw);
@@ -171,9 +175,12 @@ export const StorageService = {
     if (typeof window === 'undefined') return [];
     const raw = localStorage.getItem(STORAGE_KEYS.POOL_TASKS);
     if (!raw) {
-      const initial = INITIAL_POOL_TASKS(userId);
-      this.savePoolTasks(initial);
-      return initial;
+      if (!userId || userId === 'local-user') {
+        const initial = INITIAL_POOL_TASKS(userId || 'local-user');
+        this.savePoolTasks(initial);
+        return initial;
+      }
+      return [];
     }
     try {
       return JSON.parse(raw);
@@ -191,9 +198,12 @@ export const StorageService = {
     if (typeof window === 'undefined') return [];
     const raw = localStorage.getItem(STORAGE_KEYS.RECURRING_TASKS);
     if (!raw) {
-      const initial = INITIAL_RECURRING_TASKS(userId);
-      this.saveRecurringTasks(initial);
-      return initial;
+      if (!userId || userId === 'local-user') {
+        const initial = INITIAL_RECURRING_TASKS(userId || 'local-user');
+        this.saveRecurringTasks(initial);
+        return initial;
+      }
+      return [];
     }
     try {
       return JSON.parse(raw);
