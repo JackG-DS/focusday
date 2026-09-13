@@ -189,14 +189,18 @@ export async function clearAllDailyTasksRPC(
 
 // RPC Helper: Generate due recurring tasks for today
 export async function generateDueRecurringTasksRPC(
-  config?: SupabaseConfig
+  config?: SupabaseConfig,
+  p_today?: string
 ): Promise<{ data: DailyTask[] | null; error: Error | null }> {
   const client = getSupabaseClient(config);
   if (!client) {
     return { data: null, error: new Error('Supabase client is not configured') };
   }
 
-  const { data, error } = await client.rpc('generate_due_recurring_tasks');
+  const { data, error } = await client.rpc(
+    'generate_due_recurring_tasks',
+    p_today ? { p_today } : undefined
+  );
   return {
     data: (data as DailyTask[]) || null,
     error: error ? new Error(error.message) : null,

@@ -292,8 +292,8 @@ begin
 end;
 $$;
 
--- Helper: Automatically generate due recurring tasks for today (preserving notes & color)
-create or replace function generate_due_recurring_tasks()
+-- Helper: Automatically generate due recurring tasks for today (preserving notes & color, deduplicated)
+create or replace function generate_due_recurring_tasks(p_today date default current_date)
 returns setof public.daily_tasks
 language plpgsql
 security invoker
@@ -303,12 +303,14 @@ declare
   v_max_order integer;
   rec record;
   v_new_task public.daily_tasks;
+  v_target_date date;
 begin
-  v_current_dow := extract(dow from current_date)::integer;
+  v_target_date := coalesce(p_today, current_date);
+  v_current_dow := extract(dow from v_target_date)::integer;
 
   select coalesce(max(order_index), 0) into v_max_order
   from public.daily_tasks
-  where user_id = auth.uid() and date_assigned = current_date;
+  where user_id = auth.uid() and date_assigned = v_target_date;
 
   for rec in
     select r.id, r.title, r.notes, r.color
@@ -321,13 +323,14 @@ begin
       and not exists (
         select 1 from public.daily_tasks d
         where d.user_id = auth.uid()
-          and d.date_assigned = current_date
-          and d.title = r.title
+          and d.date_assigned = v_target_date
+          and lower(trim(d.title)) = lower(trim(r.title))
+          and d.completed = false
       )
   loop
     v_max_order := v_max_order + 1;
     insert into public.daily_tasks (user_id, title, notes, color, completed, order_index, date_assigned)
-    values (auth.uid(), rec.title, rec.notes, rec.color, false, v_max_order, current_date)
+    values (auth.uid(), rec.title, rec.notes, rec.color, false, v_max_order, v_target_date)
     returning * into v_new_task;
 
     return next v_new_task;

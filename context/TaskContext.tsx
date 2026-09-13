@@ -308,8 +308,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
-    const client = getSupabaseClient(supabaseConfig);
-    if (!client) {
+    const supabase = getSupabaseClient(supabaseConfig);
+    if (!supabase) {
       setIsSyncing(false);
       setSyncStatus('error');
       return;
@@ -326,11 +326,12 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await Promise.race([
         (async () => {
-          const today = getTodayDateString();
+          const localDateStr = new Date().toLocaleDateString('en-CA');
+          const today = localDateStr;
 
           // 1. Fetch Remote User Settings
           try {
-            const { data: userSettingsData } = await client
+            const { data: userSettingsData } = await supabase
               .from('user_settings')
               .select('*')
               .eq('user_id', targetUserId)
@@ -366,11 +367,21 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
           }
 
-          // 3. Fetch Tasks Directly from Supabase (Strictly Read Only, Never Re-insert Old Stale Items)
+          // 1. First, call rollover_incomplete_tasks
+          await supabase.rpc('rollover_incomplete_tasks');
+
+          // 2. Second, call generate_due_recurring_tasks with local date parameter
+          await supabase.rpc('generate_due_recurring_tasks', { p_today: localDateStr });
+
+          // 3. Third, fetch daily_tasks where date_assigned = localDateStr and update state
           const [dailyRes, poolRes, recurringRes] = await Promise.all([
-            client.from('daily_tasks').select('*').order('order_index', { ascending: true }),
-            client.from('pool_tasks').select('*').order('created_at', { ascending: false }),
-            client.from('recurring_tasks').select('*').order('created_at', { ascending: false }),
+            supabase
+              .from('daily_tasks')
+              .select('*')
+              .eq('date_assigned', localDateStr)
+              .order('order_index', { ascending: true }),
+            supabase.from('pool_tasks').select('*').order('created_at', { ascending: false }),
+            supabase.from('recurring_tasks').select('*').order('created_at', { ascending: false }),
           ]);
 
           if (dailyRes.error) {
@@ -393,8 +404,12 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           });
 
           // Strictly overwrite state and sync local cache with truth from database
-          setDailyTasks(cloudDaily);
-          StorageService.saveDailyTasks(cloudDaily);
+          setDailyTasks((prev) => {
+            const otherTasks = prev.filter((t) => t.date_assigned !== localDateStr);
+            const merged = [...otherTasks, ...cloudDaily];
+            StorageService.saveDailyTasks(merged);
+            return merged;
+          });
 
           setPoolTasks(cloudPool);
           StorageService.savePoolTasks(cloudPool);
@@ -570,12 +585,38 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             });
             setUserId(session.user.id);
 
-            // Execute cloud daily generation & rollover ONCE on initial daily mount
-            try {
-              await generateDueRecurringTasksRPC(loadedSupabase);
-              await rolloverIncompleteTasksRPC(loadedSupabase);
-            } catch (initRpcErr) {
-              console.warn('[TaskContext] Initial daily RPC init skipped:', initRpcErr);
+            // Sequence on session init:
+            // 1. First, call rollover_incomplete_tasks
+            // 2. Second, call generate_due_recurring_tasks with local date parameter
+            // 3. Third, fetch daily_tasks where date_assigned = localDateStr and update state
+            const supabase = getSupabaseClient(loadedSupabase);
+            if (supabase) {
+              const localDateStr = new Date().toLocaleDateString('en-CA');
+              try {
+                // 1. First, call rollover_incomplete_tasks
+                await supabase.rpc('rollover_incomplete_tasks');
+
+                // 2. Second, call generate_due_recurring_tasks with local date parameter
+                await supabase.rpc('generate_due_recurring_tasks', { p_today: localDateStr });
+
+                // 3. Third, fetch daily_tasks where date_assigned = localDateStr and update state
+                const { data: dailyData, error: dailyErr } = await supabase
+                  .from('daily_tasks')
+                  .select('*')
+                  .eq('date_assigned', localDateStr)
+                  .order('order_index', { ascending: true });
+
+                if (!dailyErr && dailyData) {
+                  setDailyTasks((prev) => {
+                    const otherTasks = prev.filter((t) => t.date_assigned !== localDateStr);
+                    const merged = [...otherTasks, ...dailyData];
+                    StorageService.saveDailyTasks(merged);
+                    return merged;
+                  });
+                }
+              } catch (initRpcErr) {
+                console.warn('[TaskContext] Initial daily RPC init skipped:', initRpcErr);
+              }
             }
           } else {
             console.log('[TaskContext] No active session on mount, using local mode.');
@@ -677,7 +718,12 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUserId(result.user.id);
 
         try {
-          await generateDueRecurringTasksRPC(supabaseConfig);
+          const supabase = getSupabaseClient(supabaseConfig);
+          if (supabase) {
+            const localDateStr = new Date().toLocaleDateString('en-CA');
+            await supabase.rpc('rollover_incomplete_tasks');
+            await supabase.rpc('generate_due_recurring_tasks', { p_today: localDateStr });
+          }
         } catch {}
 
         return true;
@@ -710,7 +756,12 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setUserId(result.user.id);
 
         try {
-          await generateDueRecurringTasksRPC(supabaseConfig);
+          const supabase = getSupabaseClient(supabaseConfig);
+          if (supabase) {
+            const localDateStr = new Date().toLocaleDateString('en-CA');
+            await supabase.rpc('rollover_incomplete_tasks');
+            await supabase.rpc('generate_due_recurring_tasks', { p_today: localDateStr });
+          }
         } catch {}
 
         return true;
