@@ -18,10 +18,10 @@ import {
 import {
   StorageService,
   getTodayDateString,
-  getTomorrowDateString,
   generateUUID,
   getOrCreateUserId,
 } from '@/lib/storage';
+import { getLocalDateString, getTomorrowDateString } from '@/lib/dateUtils';
 import {
   getSupabaseClient,
   getAuthSession,
@@ -150,8 +150,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [celebrationModalTask, setCelebrationModalTask] = useState<DailyTask | null>(null);
   const [isClientReady, setIsClientReady] = useState(false);
 
-  const todayStr = useMemo(() => getTodayDateString(), []);
-  const tomorrowStr = useMemo(() => getTomorrowDateString(), []);
+  const todayStr = getLocalDateString();
+  const tomorrowStr = getTomorrowDateString();
 
   // Confetti trigger helper
   const triggerConfetti = useCallback(() => {
@@ -326,8 +326,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await Promise.race([
         (async () => {
-          const localDateStr = new Date().toLocaleDateString('en-CA');
-          const today = localDateStr;
+          const today = todayStr;
 
           // 1. Fetch Remote User Settings
           try {
@@ -371,41 +370,57 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           await supabase.rpc('rollover_incomplete_tasks');
 
           // 2. Second, call generate_due_recurring_tasks with local date parameter
-          await supabase.rpc('generate_due_recurring_tasks', { p_today: localDateStr });
+          await supabase.rpc('generate_due_recurring_tasks', { p_today: todayStr });
 
-          // 3. Third, fetch daily_tasks where date_assigned = localDateStr and update state
-          const [dailyRes, poolRes, recurringRes] = await Promise.all([
+          // 3. Third, fetch daily_tasks for today and tomorrow and update state:
+          // Main Today List: .from('daily_tasks').select('*').eq('date_assigned', todayStr)
+          // Tomorrow Preview: .from('daily_tasks').select('*').eq('date_assigned', tomorrowStr)
+          const [todayRes, tomorrowRes, poolRes, recurringRes] = await Promise.all([
             supabase
               .from('daily_tasks')
               .select('*')
-              .eq('date_assigned', localDateStr)
+              .eq('date_assigned', todayStr)
+              .order('order_index', { ascending: true }),
+            supabase
+              .from('daily_tasks')
+              .select('*')
+              .eq('date_assigned', tomorrowStr)
               .order('order_index', { ascending: true }),
             supabase.from('pool_tasks').select('*').order('created_at', { ascending: false }),
             supabase.from('recurring_tasks').select('*').order('created_at', { ascending: false }),
           ]);
 
-          if (dailyRes.error) {
-            console.error('[TaskContext] Fetch error (daily_tasks):', dailyRes.error);
-            throw new Error(dailyRes.error.message);
+          if (todayRes.error) {
+            console.error('[TaskContext] Fetch error (daily_tasks today):', todayRes.error);
+            throw new Error(todayRes.error.message);
+          }
+          if (tomorrowRes.error) {
+            console.error('[TaskContext] Fetch error (daily_tasks tomorrow):', tomorrowRes.error);
+            throw new Error(tomorrowRes.error.message);
           }
           if (poolRes.error) {
             console.error('[TaskContext] Fetch error (pool_tasks):', poolRes.error);
             throw new Error(poolRes.error.message);
           }
 
-          const cloudDaily: DailyTask[] = dailyRes.data || [];
+          const cloudToday: DailyTask[] = todayRes.data || [];
+          const cloudTomorrow: DailyTask[] = tomorrowRes.data || [];
+          const cloudDaily: DailyTask[] = [...cloudToday, ...cloudTomorrow];
           const cloudPool: PoolTask[] = poolRes.data || [];
           const cloudRecurring: RecurringTask[] = recurringRes?.data || [];
 
           console.log('[TaskContext] Tasks fetched from cloud:', {
-            dailyCount: cloudDaily.length,
+            todayCount: cloudToday.length,
+            tomorrowCount: cloudTomorrow.length,
             poolCount: cloudPool.length,
             recurringCount: cloudRecurring.length,
           });
 
           // Strictly overwrite state and sync local cache with truth from database
           setDailyTasks((prev) => {
-            const otherTasks = prev.filter((t) => t.date_assigned !== localDateStr);
+            const otherTasks = prev.filter(
+              (t) => t.date_assigned !== todayStr && t.date_assigned !== tomorrowStr
+            );
             const merged = [...otherTasks, ...cloudDaily];
             StorageService.saveDailyTasks(merged);
             return merged;
@@ -436,6 +451,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     supabaseConfig,
     authUser,
     userId,
+    todayStr,
+    tomorrowStr,
     settings.reset_time,
     settings.last_reset_date,
     checkShouldReset,
@@ -588,28 +605,42 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             // Sequence on session init:
             // 1. First, call rollover_incomplete_tasks
             // 2. Second, call generate_due_recurring_tasks with local date parameter
-            // 3. Third, fetch daily_tasks where date_assigned = localDateStr and update state
+            // 3. Third, fetch daily_tasks for today and tomorrow and update state:
+            // Main Today List: .from('daily_tasks').select('*').eq('date_assigned', todayStr)
+            // Tomorrow Preview: .from('daily_tasks').select('*').eq('date_assigned', tomorrowStr)
             const supabase = getSupabaseClient(loadedSupabase);
             if (supabase) {
-              const localDateStr = new Date().toLocaleDateString('en-CA');
               try {
                 // 1. First, call rollover_incomplete_tasks
                 await supabase.rpc('rollover_incomplete_tasks');
 
                 // 2. Second, call generate_due_recurring_tasks with local date parameter
-                await supabase.rpc('generate_due_recurring_tasks', { p_today: localDateStr });
+                await supabase.rpc('generate_due_recurring_tasks', { p_today: todayStr });
 
-                // 3. Third, fetch daily_tasks where date_assigned = localDateStr and update state
-                const { data: dailyData, error: dailyErr } = await supabase
-                  .from('daily_tasks')
-                  .select('*')
-                  .eq('date_assigned', localDateStr)
-                  .order('order_index', { ascending: true });
+                // 3. Third, fetch daily_tasks for today and tomorrow and update state
+                const [todayRes, tomorrowRes] = await Promise.all([
+                  supabase
+                    .from('daily_tasks')
+                    .select('*')
+                    .eq('date_assigned', todayStr)
+                    .order('order_index', { ascending: true }),
+                  supabase
+                    .from('daily_tasks')
+                    .select('*')
+                    .eq('date_assigned', tomorrowStr)
+                    .order('order_index', { ascending: true }),
+                ]);
 
-                if (!dailyErr && dailyData) {
+                if (!todayRes.error && !tomorrowRes.error) {
+                  const cloudToday = todayRes.data || [];
+                  const cloudTomorrow = tomorrowRes.data || [];
+                  const cloudDaily = [...cloudToday, ...cloudTomorrow];
+
                   setDailyTasks((prev) => {
-                    const otherTasks = prev.filter((t) => t.date_assigned !== localDateStr);
-                    const merged = [...otherTasks, ...dailyData];
+                    const otherTasks = prev.filter(
+                      (t) => t.date_assigned !== todayStr && t.date_assigned !== tomorrowStr
+                    );
+                    const merged = [...otherTasks, ...cloudDaily];
                     StorageService.saveDailyTasks(merged);
                     return merged;
                   });
@@ -720,9 +751,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const supabase = getSupabaseClient(supabaseConfig);
           if (supabase) {
-            const localDateStr = new Date().toLocaleDateString('en-CA');
             await supabase.rpc('rollover_incomplete_tasks');
-            await supabase.rpc('generate_due_recurring_tasks', { p_today: localDateStr });
+            await supabase.rpc('generate_due_recurring_tasks', { p_today: todayStr });
           }
         } catch {}
 
@@ -730,7 +760,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return false;
     },
-    [supabaseConfig]
+    [supabaseConfig, todayStr]
   );
 
   // Sign Up Handler
@@ -758,9 +788,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         try {
           const supabase = getSupabaseClient(supabaseConfig);
           if (supabase) {
-            const localDateStr = new Date().toLocaleDateString('en-CA');
             await supabase.rpc('rollover_incomplete_tasks');
-            await supabase.rpc('generate_due_recurring_tasks', { p_today: localDateStr });
+            await supabase.rpc('generate_due_recurring_tasks', { p_today: todayStr });
           }
         } catch {}
 
@@ -768,7 +797,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
       return false;
     },
-    [supabaseConfig]
+    [supabaseConfig, todayStr]
   );
 
   // Sign Out Handler
@@ -923,17 +952,16 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Move Task from Tomorrow (or any date) to Today
   const moveTaskToToday = useCallback(
     async (taskId: string) => {
-      const today = getTodayDateString();
       const task = dailyTasks.find((t) => t.id === taskId);
       if (!task) return;
 
-      const todayTasks = dailyTasks.filter((t) => t.date_assigned === today);
-      const maxOrder = todayTasks.length > 0 ? Math.max(...todayTasks.map((t) => t.order_index)) : -1;
+      const currentTodayTasks = dailyTasks.filter((t) => t.date_assigned === todayStr);
+      const maxOrder = currentTodayTasks.length > 0 ? Math.max(...currentTodayTasks.map((t) => t.order_index)) : -1;
 
-      // 1. Optimistic Local State Update
+      // 1. Optimistic Local State Update: cleanly transitions item between tomorrowTasks and todaysTasks
       const updatedTasks = dailyTasks.map((t) =>
         t.id === taskId
-          ? { ...t, date_assigned: today, order_index: maxOrder + 1 }
+          ? { ...t, date_assigned: todayStr, order_index: maxOrder + 1 }
           : t
       );
       setDailyTasks(updatedTasks);
@@ -942,15 +970,21 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // 2. Cloud DB Update
       if (supabaseConfig.enabled && authUser.isAuthenticated) {
-        try {
-          await moveTaskToTodayRPC(taskId, supabaseConfig);
-          await refreshTasks();
-        } catch (e) {
-          console.warn('[TaskContext] moveTaskToToday error:', e);
+        const supabase = getSupabaseClient(supabaseConfig);
+        if (supabase) {
+          try {
+            await supabase.rpc('move_task_to_date', { 
+              p_task_id: taskId, 
+              p_new_date: todayStr 
+            });
+            await refreshTasks();
+          } catch (e) {
+            console.warn('[TaskContext] moveTaskToToday error:', e);
+          }
         }
       }
     },
-    [dailyTasks, supabaseConfig, authUser.isAuthenticated, refreshTasks, playSound]
+    [dailyTasks, todayStr, supabaseConfig, authUser.isAuthenticated, refreshTasks, playSound]
   );
 
   // Clear All Tasks from Today's Daily List
@@ -1471,7 +1505,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const trimmed = title.trim();
       const trimmedNotes = notes?.trim() || null;
       const taskColor = color || 'default';
-      const today = getTodayDateString();
+      const today = todayStr;
 
       // Deduplication check: check if an incomplete/active task with matching title already exists today
       const isDuplicate = dailyTasks.some(
@@ -1498,6 +1532,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
               p_title: trimmed,
               p_notes: trimmedNotes,
               p_color: taskColor,
+              p_target_date: todayStr,
             });
 
             if (error) {
@@ -1530,7 +1565,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       // Local/offline fallback
       return await addDailyTask(trimmed, trimmedNotes, taskColor);
     },
-    [dailyTasks, supabaseConfig, authUser.isAuthenticated, refreshTasks, addDailyTask]
+    [dailyTasks, todayStr, supabaseConfig, authUser.isAuthenticated, refreshTasks, addDailyTask]
   );
 
   // Dismiss Modals

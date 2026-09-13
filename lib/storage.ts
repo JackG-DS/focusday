@@ -10,23 +10,9 @@ const STORAGE_KEYS = {
   USER_ID: 'antigravity_user_id_v1',
 };
 
-// Generates local ISO Date in YYYY-MM-DD format based on user's timezone
-export function getTodayDateString(): string {
-  const d = new Date();
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-export function getTomorrowDateString(): string {
-  const d = new Date();
-  d.setDate(d.getDate() + 1);
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
+import { getLocalDateString, getTomorrowDateString } from './dateUtils';
+export { getLocalDateString, getTomorrowDateString };
+export const getTodayDateString = getLocalDateString;
 
 export function formatReadableDate(dateStr: string): string {
   try {

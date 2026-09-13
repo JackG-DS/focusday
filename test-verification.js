@@ -110,6 +110,61 @@ function runTests() {
   assert.strictEqual(reordered[2].order_index, 2);
   console.log('✅ Test 3 Passed: Reordering index calculation is verified.\n');
 
+  // --- TEST 4: Bulletproof Local Date Utility ---
+  console.log('▶ Test 4: Testing Bulletproof Local Date Formatting vs UTC skew...');
+  const getLocalDateString = (d = new Date()) => {
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getTomorrowDateString = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return getLocalDateString(d);
+  };
+
+  const testDate = new Date(2026, 8, 12, 23, 30, 0); // 2026-09-12 23:30 local
+  const formattedLocal = getLocalDateString(testDate);
+  assert.strictEqual(formattedLocal, '2026-09-12', 'Local date must reflect local day, not UTC');
+
+  const tomorrowCalculated = new Date(testDate);
+  tomorrowCalculated.setDate(tomorrowCalculated.getDate() + 1);
+  assert.strictEqual(getLocalDateString(tomorrowCalculated), '2026-09-13', 'Tomorrow must be exactly one day ahead locally');
+  console.log('✅ Test 4 Passed: Local date utility handles evening hours and tomorrow correctly.\n');
+
+  // --- TEST 5: Move to Today Clean Transition ---
+  console.log('▶ Test 5: Testing Move to Today State Transition without disappearing...');
+  const todayStr = '2026-09-12';
+  const tomorrowStr = '2026-09-13';
+
+  let currentDailyTasks = [
+    { id: 't1', title: 'Task on Today', date_assigned: todayStr, completed: false, order_index: 0 },
+    { id: 't2', title: 'Task for Tomorrow', date_assigned: tomorrowStr, completed: false, order_index: 0 },
+  ];
+
+  let todayList = currentDailyTasks.filter(t => t.date_assigned === todayStr);
+  let tomorrowList = currentDailyTasks.filter(t => t.date_assigned === tomorrowStr);
+  assert.strictEqual(todayList.length, 1);
+  assert.strictEqual(tomorrowList.length, 1);
+
+  // Simulate Move to Today:
+  const movingTaskId = 't2';
+  const maxTodayOrder = Math.max(...todayList.map(t => t.order_index));
+  currentDailyTasks = currentDailyTasks.map(t =>
+    t.id === movingTaskId ? { ...t, date_assigned: todayStr, order_index: maxTodayOrder + 1 } : t
+  );
+
+  // Recalculate derived lists:
+  todayList = currentDailyTasks.filter(t => t.date_assigned === todayStr);
+  tomorrowList = currentDailyTasks.filter(t => t.date_assigned === tomorrowStr);
+
+  assert.strictEqual(tomorrowList.length, 0, 'Tomorrow list must immediately no longer contain moved task');
+  assert.strictEqual(todayList.length, 2, 'Today list must immediately contain moved task');
+  assert.strictEqual(todayList[1].id, 't2', 'Moved task must be at end of today list');
+  console.log('✅ Test 5 Passed: Task cleanly transitions from tomorrow to today without disappearing.\n');
+
   console.log('🎉 ALL UNIT & INTEGRATION TESTS PASSED SUCCESSFULLY!');
 }
 

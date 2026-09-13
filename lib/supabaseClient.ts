@@ -212,6 +212,7 @@ export async function pushTemplateToDailyRPC(
   title: string,
   notes?: string | null,
   color?: string | null,
+  targetDate?: string,
   config?: SupabaseConfig
 ): Promise<{ data: DailyTask | null; error: Error | null }> {
   const client = getSupabaseClient(config);
@@ -223,6 +224,7 @@ export async function pushTemplateToDailyRPC(
     p_title: title,
     p_notes: notes || null,
     p_color: color || null,
+    p_target_date: targetDate,
   });
   return {
     data: (data as DailyTask) || null,
@@ -246,6 +248,27 @@ export async function addTaskForTomorrowRPC(
     p_title: title,
     p_notes: notes || null,
     p_color: color || null,
+  });
+  return {
+    data: (data as DailyTask) || null,
+    error: error ? new Error(error.message) : null,
+  };
+}
+
+// RPC Helper: Move task to date (e.g. tomorrow to today)
+export async function moveTaskToDateRPC(
+  taskId: string,
+  targetDate?: string,
+  config?: SupabaseConfig
+): Promise<{ data: DailyTask | null; error: Error | null }> {
+  const client = getSupabaseClient(config);
+  if (!client) {
+    return { data: null, error: new Error('Supabase client is not configured') };
+  }
+
+  const { data, error } = await client.rpc('move_task_to_date', {
+    p_task_id: taskId,
+    p_new_date: targetDate,
   });
   return {
     data: (data as DailyTask) || null,
