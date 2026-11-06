@@ -70,9 +70,9 @@ export const PWAInstallBanner: React.FC = () => {
             <Smartphone className="w-4 h-4" />
           </div>
           <div>
-            <p className="font-bold">Install FocusDay App</p>
+            <p className="font-bold">Install BountyList App</p>
             <p className="text-[11px] text-emerald-100">
-              Install as a PWA for offline access & full screen
+              Pin to your home screen for offline bounty hunting &amp; full screen
             </p>
           </div>
         </div>

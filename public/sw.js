@@ -1,4 +1,4 @@
-// FocusDay PWA Service Worker
+// BountyList PWA Service Worker
 const CACHE_NAME = 'focusday-cache-v1';
 const PRECACHE_ASSETS = [
   '/',

@@ -47,10 +47,10 @@ export const Header: React.FC = () => {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-base font-bold tracking-tight text-slate-900 dark:text-white leading-tight">
-                  FocusDay
+                  BountyList
                 </h1>
-                <span className="text-[10px] uppercase tracking-wider font-extrabold bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-md">
-                  PWA
+                <span className="text-[10px] uppercase tracking-wider font-extrabold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-400 border border-amber-300/60 dark:border-amber-800/60 px-1.5 py-0.5 rounded-md">
+                  WANTED
                 </span>
               </div>
               <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -76,7 +76,7 @@ export const Header: React.FC = () => {
             {/* Streak Counter */}
             <div 
               className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-800/40 text-amber-700 dark:text-amber-300 text-xs font-semibold shadow-xs"
-              title={`${streakCount} day active streak!`}
+              title={`${streakCount} day bounty hunting streak!`}
             >
               <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
               <span>{streakCount}d</span>
@@ -93,8 +93,8 @@ export const Header: React.FC = () => {
                   ? 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/50'
                   : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
               }`}
-              title={isSyncing ? 'Syncing...' : 'Refresh tasks from cloud'}
-              aria-label="Refresh tasks"
+              title={isSyncing ? 'Checking the telegraph...' : 'Refresh board from cloud'}
+              aria-label="Refresh board"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-blue-600 dark:text-blue-400' : ''}`} />
             </button>
@@ -115,7 +115,7 @@ export const Header: React.FC = () => {
           <div className="mt-2.5">
             <div className="flex items-center justify-between text-xs mb-1 font-medium text-slate-600 dark:text-slate-400">
               <span>
-                Today&apos;s Progress: <strong className="text-slate-900 dark:text-white">{completedCount}/{totalCount}</strong>
+                Most Wanted Captured: <strong className="text-slate-900 dark:text-white">{completedCount}/{totalCount}</strong>
               </span>
               <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
                 {todaysCompletionPercentage}%

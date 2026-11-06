@@ -37,13 +37,13 @@ export const PoolManager: React.FC = () => {
           </div>
           <div>
             <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-              Bonus Task Pool
+              Bounties Board
               <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-semibold">
-                {poolTasks.length} {poolTasks.length === 1 ? 'task' : 'tasks'}
+                {poolTasks.length} {poolTasks.length === 1 ? 'bounty' : 'bounties'}
               </span>
             </h2>
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-              Store backlogged ideas or reward tasks here. Whenever you finish <strong>100%</strong> of today’s active tasks, the system automatically pulls <strong>1 random task</strong> from this pool as your bonus challenge!
+              Post side contracts and extra rewards here. Whenever you capture <strong>100%</strong> of your active <strong>Most Wanted</strong> targets, a random <strong>Bounty</strong> from this board is automatically posted for you to claim!
             </p>
           </div>
         </div>
@@ -51,7 +51,7 @@ export const PoolManager: React.FC = () => {
         {poolTasks.length > 0 && (
           <div className="mt-3 pt-3 border-t border-indigo-200/40 dark:border-indigo-800/40 flex items-center">
             <span className="text-xs text-indigo-700 dark:text-indigo-300 font-medium flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5" /> Auto-reward ready (unlocked upon 100% daily completion)
+              <Sparkles className="w-3.5 h-3.5" /> Bounty reward ready (unlocked when Most Wanted is cleared)
             </span>
           </div>
         )}
@@ -63,13 +63,13 @@ export const PoolManager: React.FC = () => {
           type="text"
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
-          placeholder="Add a bonus idea to the pool..."
+          placeholder="Post a new Bounty contract to the board..."
           className="w-full bg-white dark:bg-slate-800/90 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm sm:text-base pl-4 pr-12 py-3.5 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 transition-all"
         />
         <button
           type="submit"
           disabled={!newTitle.trim()}
-          aria-label="Add bonus task"
+          aria-label="Add bounty"
           className="absolute right-2 p-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white rounded-xl shadow-sm transition-all focus:outline-none"
         >
           <Plus className="w-5 h-5 stroke-[2.5]" />
@@ -84,10 +84,10 @@ export const PoolManager: React.FC = () => {
               <Gift className="w-5 h-5" />
             </div>
             <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
-              Your pool is empty
+              No Bounties posted yet
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xs mx-auto">
-              Add fun side quests, reading goals, or backlog tasks above so they can be unlocked as rewards!
+              Add side quests, extra contracts, or reward targets above so they can be unlocked when the Most Wanted board is cleared!
             </p>
           </div>
         ) : (
@@ -97,7 +97,7 @@ export const PoolManager: React.FC = () => {
               className="flex items-center justify-between gap-3 p-3.5 bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-2xl shadow-xs hover:border-slate-300 dark:hover:border-slate-600 transition-all"
             >
               <div className="flex items-center gap-2.5 min-w-0">
-                <span className="text-indigo-500 font-bold text-sm">🎁</span>
+                <span className="text-indigo-500 font-bold text-sm">💰</span>
                 <span className="text-sm sm:text-base font-medium text-slate-800 dark:text-slate-100 break-words">
                   {task.title}
                 </span>
@@ -109,9 +109,9 @@ export const PoolManager: React.FC = () => {
                   type="button"
                   onClick={() => handleManualPull(task.id)}
                   className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 bg-slate-100 hover:bg-indigo-50 dark:bg-slate-700/60 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-xl border border-slate-200/80 dark:border-slate-600/80 transition-all"
-                  title="Move to Today's Tasks immediately"
+                  title="Post to Most Wanted immediately"
                 >
-                  <span>Pull to Today</span>
+                  <span>Hunt Now</span>
                   <ArrowUpRight className="w-3.5 h-3.5" />
                 </button>
 

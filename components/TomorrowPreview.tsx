@@ -125,14 +125,14 @@ export const TomorrowPreview: React.FC = () => {
           <div>
             <div className="flex items-center gap-2">
               <h3 className="text-sm sm:text-base font-bold text-slate-800 dark:text-slate-200">
-                Tomorrow&apos;s Plan
+                Tomorrow&apos;s Leads
               </h3>
               <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300">
-                {tomorrowTasks.length} {tomorrowTasks.length === 1 ? 'task' : 'tasks'}
+                {tomorrowTasks.length} {tomorrowTasks.length === 1 ? 'target' : 'targets'}
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Preview and schedule priorities ahead of time
+              Scout and line up wanted notices ahead of time
             </p>
           </div>
         </div>
@@ -151,10 +151,10 @@ export const TomorrowPreview: React.FC = () => {
           {tomorrowTasks.length === 0 ? (
             <div className="text-center py-6 px-4 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 bg-white/60 dark:bg-slate-900/60">
               <p className="text-xs sm:text-sm font-semibold text-slate-700 dark:text-slate-300">
-                No tasks planned for tomorrow yet
+                No leads scouted for tomorrow yet
               </p>
               <p className="text-xs text-slate-400 dark:text-slate-500 mt-1 max-w-xs mx-auto">
-                Toggle &ldquo;Tomorrow&rdquo; in the creation bar above to queue up goals for tomorrow!
+                Toggle &ldquo;Tomorrow&rdquo; in the posting bar above to line up targets for dawn!
               </p>
             </div>
           ) : (
@@ -249,10 +249,10 @@ export const TomorrowPreview: React.FC = () => {
                           onClick={() => handleMoveToToday(task.id)}
                           disabled={isMoving}
                           className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 rounded-xl border border-emerald-300 dark:border-emerald-800 transition-all active:scale-95 shadow-2xs"
-                          title="Move to Today's Tasks immediately"
+                          title="Post to Most Wanted immediately"
                         >
                           <ArrowUpRight className="w-3.5 h-3.5" />
-                          <span>{isMoving ? 'Moving...' : 'Move to Today'}</span>
+                          <span>{isMoving ? 'Posting...' : 'Post to Most Wanted'}</span>
                         </button>
 
                         {/* Edit Title Button */}

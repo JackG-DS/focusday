@@ -1,7 +1,7 @@
 {
-  "name": "FocusDay - Daily Tasks & Bonus Pool",
-  "short_name": "FocusDay",
-  "description": "Mobile-first To-Do List Progressive Web App with auto midnight rollover and bonus rewards.",
+  "name": "BountyList - Most Wanted & Bounties",
+  "short_name": "BountyList",
+  "description": "Track your Most Wanted targets and claim extra Bounties with auto midnight rollover.",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#090d16",
@@ -23,14 +23,14 @@
   ],
   "shortcuts": [
     {
-      "name": "Today's Tasks",
+      "name": "Most Wanted",
       "url": "/?tab=today",
-      "description": "View today's priority list"
+      "description": "View today's Most Wanted board"
     },
     {
-      "name": "Bonus Pool",
+      "name": "Bounties",
       "url": "/?tab=pool",
-      "description": "Manage bonus backlog tasks"
+      "description": "Browse unclaimed Bounties"
     }
   ]
 }

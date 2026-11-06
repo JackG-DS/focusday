@@ -3,14 +3,14 @@ import './globals.css';
 import { TaskProvider } from '@/context/TaskContext';
 
 export const metadata: Metadata = {
-  title: 'FocusDay - Smart To-Do & Bonus Pool PWA',
+  title: 'BountyList - Most Wanted & Bounties PWA',
   description:
-    'A responsive, mobile-first To-Do List Progressive Web App with drag-and-drop, midnight rollover, bonus rewards, and real-time cloud sync.',
+    'Track your Most Wanted targets and claim extra Bounties. A responsive, mobile-first Wanted Poster To-Do List PWA.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'FocusDay',
+    title: 'BountyList',
   },
   icons: {
     icon: '/icons/icon-192.svg',
@@ -47,10 +47,10 @@ export default function RootLayout({
                 window.addEventListener('load', function() {
                   navigator.serviceWorker.register('/sw.js').then(
                     function(registration) {
-                      console.log('FocusDay ServiceWorker registered with scope: ', registration.scope);
+                      console.log('BountyList ServiceWorker registered with scope: ', registration.scope);
                     },
                     function(err) {
-                      console.log('FocusDay ServiceWorker registration failed: ', err);
+                      console.log('BountyList ServiceWorker registration failed: ', err);
                     }
                   );
                 });

@@ -34,9 +34,9 @@ export const HistoryView: React.FC = () => {
             <History className="w-5 h-5" />
           </div>
           <div>
-            <h2 className="text-base font-bold text-white">Past Days Archive</h2>
+            <h2 className="text-base font-bold text-white">Sheriff&apos;s Ledger (Archive)</h2>
             <p className="text-xs text-slate-400 mt-0.5">
-              Review your historical task completions and track your progress over time.
+              Inspect past captures and track your bounty-hunting record over time.
             </p>
           </div>
         </div>
@@ -48,10 +48,10 @@ export const HistoryView: React.FC = () => {
             <Calendar className="w-5 h-5" />
           </div>
           <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
-            No past history yet
+            No captured bounties in the ledger yet
           </h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xs mx-auto">
-            As you check off tasks day after day, your past logs will automatically archive here!
+            As you round up Most Wanted targets day after day, your past captures will automatically archive here!
           </p>
         </div>
       ) : (
@@ -81,7 +81,7 @@ export const HistoryView: React.FC = () => {
                         {formatReadableDate(date)}
                       </h4>
                       <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {completed} of {total} completed ({total > 0 ? Math.round((completed / total) * 100) : 0}%)
+                        {completed} of {total} captured ({total > 0 ? Math.round((completed / total) * 100) : 0}%)
                       </p>
                     </div>
                   </div>

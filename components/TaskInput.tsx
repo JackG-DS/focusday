@@ -52,14 +52,14 @@ export const TaskInput: React.FC = () => {
     );
 
     if (result.duplicate) {
-      setWarningMessage(result.message || `"${trimmedTitle}" is already on this list!`);
+      setWarningMessage(result.message || `"${trimmedTitle}" is already posted on this board!`);
       setTimeout(() => setWarningMessage(null), 3500);
       return;
     }
 
     if (result.success) {
       if (targetDateMode === 'tomorrow') {
-        setSuccessMessage(`Added "${trimmedTitle}" to tomorrow's list!`);
+        setSuccessMessage(`Posted "${trimmedTitle}" to tomorrow's leads!`);
         setTimeout(() => setSuccessMessage(null), 3500);
       }
 
@@ -86,7 +86,7 @@ export const TaskInput: React.FC = () => {
             }`}
           >
             <Sun className="w-3.5 h-3.5" />
-            <span>Today</span>
+            <span>Most Wanted</span>
           </button>
           <button
             type="button"
@@ -103,7 +103,7 @@ export const TaskInput: React.FC = () => {
         </div>
 
         <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
-          {targetDateMode === 'today' ? "Planning today's focus" : 'Scheduling for tomorrow'}
+          {targetDateMode === 'today' ? 'Posting to Most Wanted' : 'Scouting leads for tomorrow'}
         </span>
       </div>
 
@@ -156,8 +156,8 @@ export const TaskInput: React.FC = () => {
             onChange={(e) => setTitle(e.target.value)}
             placeholder={
               targetDateMode === 'today'
-                ? 'Add a new daily priority...'
-                : 'Add a priority for tomorrow...'
+                ? 'Post a new Most Wanted target...'
+                : 'Scout a target for tomorrow...'
             }
             className="w-full bg-transparent text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm sm:text-base pl-4 pr-24 py-3.5 focus:outline-none"
           />

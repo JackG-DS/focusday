@@ -25,13 +25,13 @@ export const BonusCelebrationModal: React.FC = () => {
         {/* Text Details */}
         <div className="space-y-1.5">
           <div className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/80 px-2.5 py-0.5 rounded-full">
-            <Sparkles className="w-3.5 h-3.5" /> Bonus Unlocked
+            <Sparkles className="w-3.5 h-3.5" /> New Bounty Posted
           </div>
           <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
-            All Daily Tasks Done!
+            Most Wanted Cleared!
           </h2>
           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
-            You crushed your primary goals for today! Here is your unlocked bonus task from the pool:
+            You rounded up every outlaw on your Most Wanted board! Here is your newly unlocked Bounty contract:
           </p>
         </div>
 
@@ -43,7 +43,7 @@ export const BonusCelebrationModal: React.FC = () => {
             </div>
             <div>
               <p className="text-xs text-emerald-700 dark:text-emerald-300 font-semibold uppercase tracking-wider">
-                New Daily Challenge
+                Wanted: Special Bounty
               </p>
               <p className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
                 {celebrationModalTask.title}
@@ -59,7 +59,7 @@ export const BonusCelebrationModal: React.FC = () => {
             onClick={handleGoToTask}
             className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-98 text-white font-bold text-sm rounded-2xl shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2"
           >
-            <span>Let&apos;s Crush It!</span>
+            <span>Claim This Bounty!</span>
             <ArrowRight className="w-4 h-4" />
           </button>
 
@@ -68,7 +68,7 @@ export const BonusCelebrationModal: React.FC = () => {
             onClick={dismissCelebrationModal}
             className="w-full py-2 text-xs font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
           >
-            I&apos;ll do it later
+            Leave it on the board for later
           </button>
         </div>
       </div>

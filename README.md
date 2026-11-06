@@ -1,4 +1,4 @@
-# FocusDay - Mobile-First To-Do List Progressive Web App (PWA)
+# BountyList - Most Wanted & Bounties To-Do PWA
 
 A responsive, high-performance To-Do List Progressive Web App (PWA) built with **Next.js (App Router)**, **Tailwind CSS**, **@dnd-kit**, **Lucide Icons**, and **Supabase Real-Time Cloud Sync**.
 

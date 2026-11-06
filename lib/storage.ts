@@ -62,7 +62,7 @@ export const INITIAL_DAILY_TASKS = (userId: string, today: string): DailyTask[] 
   {
     id: generateUUID(),
     user_id: userId,
-    title: 'Review today’s high-priority launch targets 🎯',
+    title: 'Track down today’s #1 Most Wanted target 🎯',
     completed: false,
     order_index: 0,
     date_assigned: today,
@@ -71,7 +71,7 @@ export const INITIAL_DAILY_TASKS = (userId: string, today: string): DailyTask[] 
   {
     id: generateUUID(),
     user_id: userId,
-    title: 'Complete 30-minute deep focus block ⚡',
+    title: 'Complete 30-minute deep focus showdown ⚡',
     completed: false,
     order_index: 1,
     date_assigned: today,
@@ -80,7 +80,7 @@ export const INITIAL_DAILY_TASKS = (userId: string, today: string): DailyTask[] 
   {
     id: generateUUID(),
     user_id: userId,
-    title: 'Hydrate & 10 min quick afternoon stretch 💧',
+    title: 'Water the horses & 10 min afternoon stretch 💧',
     completed: false,
     order_index: 2,
     date_assigned: today,
@@ -92,25 +92,25 @@ export const INITIAL_POOL_TASKS = (userId: string): PoolTask[] => [
   {
     id: generateUUID(),
     user_id: userId,
-    title: '🎁 Bonus: Read 15 pages of an inspiring book',
+    title: '💰 Bounty: Read 15 pages of a frontier classic',
     created_at: new Date().toISOString(),
   },
   {
     id: generateUUID(),
     user_id: userId,
-    title: '🎁 Bonus: Tidy and organize desktop workspace',
+    title: '💰 Bounty: Tidy up the Sheriff’s desk & workspace',
     created_at: new Date().toISOString(),
   },
   {
     id: generateUUID(),
     user_id: userId,
-    title: '🎁 Bonus: Listen to an insightful podcast episode',
+    title: '💰 Bounty: Listen to an insightful podcast episode',
     created_at: new Date().toISOString(),
   },
   {
     id: generateUUID(),
     user_id: userId,
-    title: '🎁 Bonus: Plan a healthy home-cooked dinner recipe',
+    title: '💰 Bounty: Cook up a hearty camp-style dinner',
     created_at: new Date().toISOString(),
   },
 ];

@@ -65,7 +65,7 @@ export const SettingsModal: React.FC = () => {
     const blobUrl = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = blobUrl;
-    a.download = `focusday-backup-${getLocalDateString()}.json`;
+    a.download = `bountylist-backup-${getLocalDateString()}.json`;
     a.click();
     URL.revokeObjectURL(blobUrl);
   };

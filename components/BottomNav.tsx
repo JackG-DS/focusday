@@ -13,13 +13,13 @@ export const BottomNav: React.FC = () => {
   const navItems: { tab: ActiveTab; label: string; icon: React.ReactNode; badge?: number }[] = [
     {
       tab: 'today',
-      label: 'Today',
+      label: 'Most Wanted',
       icon: <CheckSquare className="w-4 h-4 sm:w-5 sm:h-5" />,
       badge: uncompletedTodayCount > 0 ? uncompletedTodayCount : undefined,
     },
     {
       tab: 'pool',
-      label: 'Bonus',
+      label: 'Bounties',
       icon: <Gift className="w-4 h-4 sm:w-5 sm:h-5" />,
       badge: poolTasks.length > 0 ? poolTasks.length : undefined,
     },

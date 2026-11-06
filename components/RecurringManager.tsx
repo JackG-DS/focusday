@@ -113,18 +113,18 @@ export const RecurringManager: React.FC = () => {
       // Add once right now into today's list with duplicate guard
       const res = await addDailyTask(trimmed, trimmedNotes, taskColor);
       if (res.duplicate) {
-        setWarningNotice(`"${trimmed}" is already active on today's list!`);
+        setWarningNotice(`"${trimmed}" is already posted on the Most Wanted board!`);
         setTimeout(() => setWarningNotice(null), 3500);
         return;
       }
-      setAddedNotice(`Added "${trimmed}" to today's daily focus!`);
+      setAddedNotice(`Posted "${trimmed}" to Most Wanted!`);
     } else if (mode === 'daily') {
       await addRecurringTask(trimmed, 'daily', undefined, trimmedNotes, taskColor);
-      setAddedNotice(`Added "${trimmed}" as a Daily recurring routine!`);
+      setAddedNotice(`Added "${trimmed}" as a Daily patrol!`);
     } else if (mode === 'weekly') {
       await addRecurringTask(trimmed, 'weekly', selectedDow, trimmedNotes, taskColor);
       const dayName = DAYS_OF_WEEK.find((d) => d.value === selectedDow)?.label || 'selected day';
-      setAddedNotice(`Added "${trimmed}" to recur every ${dayName}!`);
+      setAddedNotice(`Added "${trimmed}" to return every ${dayName}!`);
     }
 
     setTitle('');
@@ -140,14 +140,14 @@ export const RecurringManager: React.FC = () => {
     try {
       const res = await pushTemplateToToday(task.title, task.notes, task.color);
       if (res.duplicate) {
-        setWarningNotice(`"${task.title}" is already active on today's list!`);
+        setWarningNotice(`"${task.title}" is already posted on the Most Wanted board!`);
         setTimeout(() => setWarningNotice(null), 3500);
         return;
       }
 
       if (res.success) {
         setRecentlyPushedIds((prev) => ({ ...prev, [task.id]: true }));
-        setAddedNotice(`Pushed "${task.title}" to today's daily tasks!`);
+        setAddedNotice(`Posted "${task.title}" to Most Wanted!`);
         setTimeout(() => {
           setRecentlyPushedIds((prev) => ({ ...prev, [task.id]: false }));
         }, 2500);
@@ -170,10 +170,10 @@ export const RecurringManager: React.FC = () => {
       <div>
         <h2 className="text-xl font-extrabold tracking-tight text-slate-900 dark:text-white flex items-center gap-2">
           <Repeat className="w-5 h-5 text-indigo-500" />
-          <span>Recurring Tasks</span>
+          <span>Usual Suspects (Recurring)</span>
         </h2>
         <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-          Build habits &amp; automated routines that schedule themselves every day or week.
+          Round up repeat offenders &amp; daily patrols that automatically post to your Most Wanted board.
         </p>
       </div>
 
@@ -204,7 +204,7 @@ export const RecurringManager: React.FC = () => {
             onClick={() => setActiveTab('today')}
             className="text-xs font-bold underline hover:text-emerald-700 dark:hover:text-emerald-200 shrink-0 ml-2"
           >
-            View Today
+            View Most Wanted
           </button>
         </div>
       )}
@@ -212,7 +212,7 @@ export const RecurringManager: React.FC = () => {
       {/* Creation Card */}
       <div className="p-4 sm:p-5 rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 shadow-xs space-y-3.5">
         <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-          Create Recurring Template or Quick Add
+          Register Usual Suspect or Quick Warrant
         </h3>
 
         <form onSubmit={handleSubmit} className="space-y-3">
@@ -384,9 +384,9 @@ export const RecurringManager: React.FC = () => {
             <Plus className="w-4 h-4" />
             <span>
               {mode === 'once'
-                ? 'Add to Today Immediately'
+                ? 'Post to Most Wanted Immediately'
                 : mode === 'daily'
-                ? 'Save Daily Routine'
+                ? 'Save Daily Patrol'
                 : `Save Weekly (${DAYS_OF_WEEK.find((d) => d.value === selectedDow)?.short})`}
             </span>
           </button>
@@ -397,10 +397,10 @@ export const RecurringManager: React.FC = () => {
       <div className="space-y-3">
         <div className="flex items-center justify-between px-1">
           <h3 className="font-bold text-sm text-slate-900 dark:text-white">
-            Configured Routines ({recurringTasks.length})
+            Known Repeat Offenders ({recurringTasks.length})
           </h3>
           <span className="text-[11px] text-slate-500 dark:text-slate-400">
-            Auto-generates into daily list
+            Auto-posts to Most Wanted
           </span>
         </div>
 
@@ -501,7 +501,7 @@ export const RecurringManager: React.FC = () => {
                             ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
                             : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-300 hover:border-indigo-300'
                         }`}
-                        aria-label={`Add ${task.title} to today's list`}
+                        aria-label={`Post ${task.title} to Most Wanted`}
                       >
                         {isPushing ? (
                           <RefreshCw className="w-3.5 h-3.5 animate-spin text-indigo-500" />
@@ -511,7 +511,7 @@ export const RecurringManager: React.FC = () => {
                           <CalendarPlus className="w-3.5 h-3.5 text-indigo-500" />
                         )}
                         <span>
-                          {isPushing ? 'Adding...' : isRecentlyPushed ? 'Added!' : '+ Today'}
+                          {isPushing ? 'Posting...' : isRecentlyPushed ? 'Posted!' : '+ Most Wanted'}
                         </span>
                       </button>
 
