@@ -127,14 +127,18 @@ export async function getCurrentAuthUser(config?: SupabaseConfig): Promise<User 
 
 // RPC Helper: Rollover overdue tasks on app load
 export async function rolloverIncompleteTasksRPC(
-  config?: SupabaseConfig
+  config?: SupabaseConfig,
+  p_today?: string
 ): Promise<{ data: DailyTask[] | null; error: Error | null }> {
   const client = getSupabaseClient(config);
   if (!client) {
     return { data: null, error: new Error('Supabase client is not configured') };
   }
 
-  const { data, error } = await client.rpc('rollover_incomplete_tasks');
+  const { data, error } = await client.rpc(
+    'rollover_incomplete_tasks',
+    p_today ? { p_today } : undefined
+  );
   return {
     data: (data as DailyTask[]) || null,
     error: error ? new Error(error.message) : null,
@@ -178,14 +182,18 @@ export async function clearCompletedTasksRPC(
 
 // RPC Helper: Clear all daily tasks for today
 export async function clearAllDailyTasksRPC(
-  config?: SupabaseConfig
+  config?: SupabaseConfig,
+  p_today?: string
 ): Promise<{ error: Error | null }> {
   const client = getSupabaseClient(config);
   if (!client) {
     return { error: new Error('Supabase client is not configured') };
   }
 
-  const { error } = await client.rpc('clear_all_daily_tasks');
+  const { error } = await client.rpc(
+    'clear_all_daily_tasks',
+    p_today ? { p_today } : undefined
+  );
   return {
     error: error ? new Error(error.message) : null,
   };

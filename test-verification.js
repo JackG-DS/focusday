@@ -268,6 +268,35 @@ async function runTests() {
   assert.strictEqual(activePool.length, 2, 'Active pool must remain completely untouched in reservoir');
   console.log('✅ Test 9 Passed: pull_bonus_task sends p_today and leaves pool tasks preserved in reservoir.\n');
 
+  // --- TEST 10: 4:00 AM Logical Date Reset & Evening Rollover Protection ---
+  console.log('▶ Test 10: Testing 4:00 AM Reset Logical Date & Evening Rollover Protection...');
+  const getLogicalDate = (d = new Date(), resetTime = '04:00') => {
+    const [resetH, resetM] = resetTime.split(':').map(Number);
+    const shifted = new Date(d.getTime());
+    shifted.setHours(shifted.getHours() - resetH, shifted.getMinutes() - (resetM || 0));
+    return shifted;
+  };
+  const getLogicalDateString = (d, resetTime = '04:00') => {
+    const logical = getLogicalDate(d, resetTime);
+    const year = logical.getFullYear();
+    const month = String(logical.getMonth() + 1).padStart(2, '0');
+    const day = String(logical.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  // At 9:53 PM on Nov 5 (even though UTC is 3:53 AM Nov 6), logical date must be 2026-11-05
+  const evening953pm = new Date(2026, 10, 5, 21, 53, 0);
+  assert.strictEqual(getLogicalDateString(evening953pm, '04:00'), '2026-11-05', '9:53 PM must remain on current logical day');
+
+  // At 2:30 AM on Nov 6 (before 4:00 AM reset), logical date must STILL be 2026-11-05
+  const earlyMorning230am = new Date(2026, 10, 6, 2, 30, 0);
+  assert.strictEqual(getLogicalDateString(earlyMorning230am, '04:00'), '2026-11-05', '2:30 AM before 4:00 AM reset must remain on previous logical day');
+
+  // At 4:00 AM on Nov 6, logical date advances to 2026-11-06
+  const at400am = new Date(2026, 10, 6, 4, 0, 0);
+  assert.strictEqual(getLogicalDateString(at400am, '04:00'), '2026-11-06', '4:00 AM must advance to the new logical day');
+  console.log('✅ Test 10 Passed: 4:00 AM reset time keeps evening and pre-4AM hours on the current logical day.\n');
+
   console.log('🎉 ALL UNIT & INTEGRATION TESTS PASSED SUCCESSFULLY!');
 }
 

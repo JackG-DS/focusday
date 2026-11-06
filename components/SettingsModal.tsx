@@ -212,19 +212,21 @@ create policy "Users can update their own settings"
 -- 11. Helper Functions (RPC)
 -- ====================================================================
 
--- Helper: Rollover incomplete tasks from previous days to today
-create or replace function rollover_incomplete_tasks()
+-- Helper: Rollover incomplete tasks from previous days to today (uses client's local/logical p_today)
+create or replace function rollover_incomplete_tasks(p_today date default current_date)
 returns setof public.daily_tasks
 language plpgsql
 security invoker
 as $$
+declare
+  v_today date := coalesce(p_today, current_date);
 begin
   return query
   update public.daily_tasks
-  set date_assigned = current_date
+  set date_assigned = v_today
   where user_id = auth.uid()
     and completed = false
-    and date_assigned < current_date
+    and date_assigned < v_today
   returning *;
 end;
 $$;
@@ -283,16 +285,18 @@ begin
 end;
 $$;
 
--- Helper: Clear all daily tasks for today
-create or replace function clear_all_daily_tasks()
+-- Helper: Clear all daily tasks for today (uses client's local/logical p_today)
+create or replace function clear_all_daily_tasks(p_today date default current_date)
 returns void
 language plpgsql
 security invoker
 as $$
+declare
+  v_today date := coalesce(p_today, current_date);
 begin
   delete from public.daily_tasks
   where user_id = auth.uid()
-    and date_assigned = current_date;
+    and date_assigned = v_today;
 end;
 $$;
 

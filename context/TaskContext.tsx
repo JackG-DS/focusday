@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import confetti from 'canvas-confetti';
 import { arrayMove } from '@dnd-kit/sortable';
 import {
@@ -21,7 +21,7 @@ import {
   generateUUID,
   getOrCreateUserId,
 } from '@/lib/storage';
-import { getLocalDateString, getTomorrowDateString } from '@/lib/dateUtils';
+import { getLocalDateString, getTomorrowDateString, getLogicalDate } from '@/lib/dateUtils';
 import {
   getSupabaseClient,
   getAuthSession,
@@ -149,9 +149,25 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [rolloverReport, setRolloverReport] = useState<RolloverReport | null>(null);
   const [celebrationModalTask, setCelebrationModalTask] = useState<DailyTask | null>(null);
   const [isClientReady, setIsClientReady] = useState(false);
+  const [clockTick, setClockTick] = useState(0);
+  const isRefreshingRef = useRef(false);
 
-  const todayStr = getLocalDateString();
-  const tomorrowStr = getTomorrowDateString();
+  // Periodically re-evaluate logical date so open tabs roll over cleanly at reset_time (e.g., 04:00 AM)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setClockTick((t) => t + 1);
+    }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  const todayStr = useMemo(
+    () => getLocalDateString(new Date(), settings.reset_time),
+    [settings.reset_time, clockTick]
+  );
+  const tomorrowStr = useMemo(
+    () => getTomorrowDateString(new Date(), settings.reset_time),
+    [settings.reset_time, clockTick]
+  );
 
   // Confetti trigger helper
   const triggerConfetti = useCallback(() => {
@@ -220,23 +236,15 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSyncErrorMessage(null);
   }, []);
 
-  // Check if current time has passed daily reset threshold
+  // Check if logical date has rolled over since last_reset_date
+  // Because getLocalDateString() shifts by reset_time (e.g. 04:00 AM), the logical date
+  // only advances once the local clock passes reset_time.
   const checkShouldReset = useCallback((resetTime: string = '04:00', lastResetDate?: string): boolean => {
-    const now = new Date();
-    const today = getTodayDateString();
-
-    if (lastResetDate === today) {
+    const logicalToday = getLocalDateString(new Date(), resetTime);
+    if (!lastResetDate) {
       return false;
     }
-
-    const [resetHStr, resetMStr] = (resetTime || '04:00').split(':');
-    const resetH = parseInt(resetHStr, 10) || 4;
-    const resetM = parseInt(resetMStr, 10) || 0;
-
-    const currentH = now.getHours();
-    const currentM = now.getMinutes();
-
-    return currentH > resetH || (currentH === resetH && currentM >= resetM);
+    return lastResetDate < logicalToday;
   }, []);
 
   // Save Settings to Local Storage & Supabase
@@ -315,6 +323,11 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
 
+    if (isRefreshingRef.current) {
+      return;
+    }
+    isRefreshingRef.current = true;
+
     setIsSyncing(true);
     setSyncStatus('syncing');
     setSyncErrorMessage(null);
@@ -326,10 +339,11 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await Promise.race([
         (async () => {
-          const localToday = getLocalDateString();
-          const localTomorrow = getTomorrowDateString();
+          let effectiveResetTime = (settings.reset_time || '04:00').slice(0, 5);
+          let effectiveLastReset = settings.last_reset_date || '';
+          let effectiveDayEnded = settings.day_ended_date || null;
 
-          // 1. Fetch Remote User Settings
+          // 1. Fetch Remote User Settings FIRST so we use the user's configured reset_time
           try {
             const { data: userSettingsData } = await supabase
               .from('user_settings')
@@ -338,12 +352,16 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
               .maybeSingle();
 
             if (userSettingsData) {
+              effectiveResetTime = (userSettingsData.reset_time || effectiveResetTime || '04:00').slice(0, 5);
+              effectiveLastReset = userSettingsData.last_reset_date || effectiveLastReset || '';
+              effectiveDayEnded = userSettingsData.day_ended_date ?? effectiveDayEnded ?? null;
+
               setSettings((prev) => {
                 const merged: UserSettings = {
                   ...prev,
-                  reset_time: userSettingsData.reset_time || prev.reset_time || '04:00',
-                  last_reset_date: userSettingsData.last_reset_date || prev.last_reset_date || '',
-                  day_ended_date: userSettingsData.day_ended_date || prev.day_ended_date || null,
+                  reset_time: effectiveResetTime,
+                  last_reset_date: effectiveLastReset,
+                  day_ended_date: effectiveDayEnded,
                 };
                 StorageService.saveSettings(merged);
                 return merged;
@@ -353,35 +371,44 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.warn('[TaskContext] Optional user_settings fetch skipped:', settingsErr);
           }
 
-          // 2. Check Daily Auto-Reset Threshold
-          const currentResetTime = settings.reset_time || '04:00';
-          const currentLastReset = settings.last_reset_date || '';
+          // Compute logical Today and Tomorrow using the user's reset_time (e.g. 04:00 AM)
+          const localToday = getLocalDateString(new Date(), effectiveResetTime);
+          const localTomorrow = getTomorrowDateString(new Date(), effectiveResetTime);
 
-          if (checkShouldReset(currentResetTime, currentLastReset)) {
-            console.log('[TaskContext] Daily reset threshold reached. Clearing completed tasks...');
-            try {
-              await clearCompletedTasksRPC(supabaseConfig);
-              updateSettings({ last_reset_date: localToday, day_ended_date: null });
-            } catch (resetErr) {
-              console.warn('[TaskContext] clear_completed_tasks RPC error:', resetErr);
-            }
+          // 2. Check Daily Auto-Reset Threshold (only when logical date has advanced past last_reset_date)
+          if (checkShouldReset(effectiveResetTime, effectiveLastReset)) {
+            console.log('[TaskContext] Logical day reset reached for:', localToday);
+            updateSettings({
+              reset_time: effectiveResetTime,
+              last_reset_date: localToday,
+              day_ended_date: null,
+            });
+          } else if (!effectiveLastReset) {
+            updateSettings({
+              reset_time: effectiveResetTime,
+              last_reset_date: localToday,
+            });
+          } else if (effectiveDayEnded && effectiveDayEnded !== localToday) {
+            updateSettings({
+              day_ended_date: null,
+            });
           }
 
-          // 1. First, call rollover_incomplete_tasks
+          // 3. Call rollover_incomplete_tasks with client's logical localToday (prevents UTC midnight premature rollover!)
           try {
-            await supabase.rpc('rollover_incomplete_tasks');
+            await supabase.rpc('rollover_incomplete_tasks', { p_today: localToday });
           } catch (rolloverErr) {
             console.warn('[TaskContext] rollover_incomplete_tasks RPC error:', rolloverErr);
           }
 
-          // 2. Second, call generate_due_recurring_tasks with local date parameter
+          // 4. Call generate_due_recurring_tasks with local date parameter
           try {
             await supabase.rpc('generate_due_recurring_tasks', { p_today: localToday });
           } catch (recurringRpcErr) {
             console.warn('[TaskContext] generate_due_recurring_tasks RPC error:', recurringRpcErr);
           }
 
-          // 3. Third, fetch daily_tasks for today and tomorrow and update state:
+          // 5. Fetch daily_tasks for today and tomorrow and update state:
           // Date Filter Guard: Main Today List
           const { data, error } = await supabase
             .from('daily_tasks')
@@ -461,6 +488,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setSyncStatus('error');
       setSyncErrorMessage(err?.message || 'Database unreachable. Running in local offline mode.');
     } finally {
+      isRefreshingRef.current = false;
       setIsSyncing(false);
       setIsLoading(false);
     }
@@ -490,18 +518,19 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const loadedRecurring = StorageService.getRecurringTasks(localUid);
     const loadedSettings = StorageService.getSettings();
     const loadedSupabase = StorageService.getSupabaseConfig();
-    const today = getTodayDateString();
+    const today = getLocalDateString(new Date(), loadedSettings.reset_time);
 
-    // Auto-Reset Check on Local Storage
+    // Auto-Reset Check on Local Storage (only when logical date advances past last_reset_date)
     if (checkShouldReset(loadedSettings.reset_time, loadedSettings.last_reset_date)) {
-      loadedDaily = loadedDaily.filter((t) => !t.completed);
       loadedSettings.last_reset_date = today;
       loadedSettings.day_ended_date = null; // Clear day ended on rollover
-      StorageService.saveDailyTasks(loadedDaily);
+      StorageService.saveSettings(loadedSettings);
+    } else if (!loadedSettings.last_reset_date) {
+      loadedSettings.last_reset_date = today;
       StorageService.saveSettings(loadedSettings);
     }
 
-    // Reset day_ended_date if it's from a previous day
+    // Reset day_ended_date if it's from a previous logical day
     if (loadedSettings.day_ended_date && loadedSettings.day_ended_date !== today) {
       loadedSettings.day_ended_date = null;
       StorageService.saveSettings(loadedSettings);
@@ -512,7 +541,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // to prevent redundant client-side insertion loops that bypass database deduplication.
     const isCloudEnabled = Boolean(loadedSupabase.enabled && loadedSupabase.url && loadedSupabase.anonKey);
     if (!isCloudEnabled) {
-      const currentDow = new Date().getDay();
+      const currentDow = getLogicalDate(new Date(), loadedSettings.reset_time).getDay();
       const existingActiveTitles = new Set(
         loadedDaily
           .filter((t) => t.date_assigned === today && !t.completed)
@@ -541,44 +570,46 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     }
 
-    // Local Midnight Rollover
-    const overdueIncompleteTasks = loadedDaily.filter(
-      (task) => !task.completed && task.date_assigned < today
-    );
+    // Local Rollover (only when offline / local mode; cloud rollover runs in refreshTasks with p_today)
+    if (!isCloudEnabled) {
+      const overdueIncompleteTasks = loadedDaily.filter(
+        (task) => !task.completed && task.date_assigned < today
+      );
 
-    if (overdueIncompleteTasks.length > 0) {
-      const existingTodayTasks = loadedDaily.filter((t) => t.date_assigned === today);
-      const minTodayOrder = existingTodayTasks.length > 0 
-        ? Math.min(...existingTodayTasks.map((t) => t.order_index)) 
-        : 0;
+      if (overdueIncompleteTasks.length > 0) {
+        const existingTodayTasks = loadedDaily.filter((t) => t.date_assigned === today);
+        const minTodayOrder = existingTodayTasks.length > 0 
+          ? Math.min(...existingTodayTasks.map((t) => t.order_index)) 
+          : 0;
 
-      let rolloverIndexOffset = minTodayOrder - overdueIncompleteTasks.length;
+        let rolloverIndexOffset = minTodayOrder - overdueIncompleteTasks.length;
 
-      const rolledOverTasks = loadedDaily.map((task) => {
-        if (!task.completed && task.date_assigned < today) {
-          return {
-            ...task,
-            date_assigned: today,
-            order_index: rolloverIndexOffset++,
-          };
-        }
-        return task;
-      });
+        const rolledOverTasks = loadedDaily.map((task) => {
+          if (!task.completed && task.date_assigned < today) {
+            return {
+              ...task,
+              date_assigned: today,
+              order_index: rolloverIndexOffset++,
+            };
+          }
+          return task;
+        });
 
-      const normalized = rolledOverTasks.map((task) => task);
-      const todaysNormalized = normalized
-        .filter((t) => t.date_assigned === today)
-        .sort((a, b) => a.order_index - b.order_index)
-        .map((t, idx) => ({ ...t, order_index: idx }));
+        const normalized = rolledOverTasks.map((task) => task);
+        const todaysNormalized = normalized
+          .filter((t) => t.date_assigned === today)
+          .sort((a, b) => a.order_index - b.order_index)
+          .map((t, idx) => ({ ...t, order_index: idx }));
 
-      const others = normalized.filter((t) => t.date_assigned !== today);
-      loadedDaily = [...others, ...todaysNormalized];
+        const others = normalized.filter((t) => t.date_assigned !== today);
+        loadedDaily = [...others, ...todaysNormalized];
 
-      StorageService.saveDailyTasks(loadedDaily);
-      setRolloverReport({
-        date: today,
-        migratedCount: overdueIncompleteTasks.length,
-      });
+        StorageService.saveDailyTasks(loadedDaily);
+        setRolloverReport({
+          date: today,
+          migratedCount: overdueIncompleteTasks.length,
+        });
+      }
     }
 
     // Streak Check
@@ -605,6 +636,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setIsClientReady(true);
 
     // 2. Check Supabase Auth Session on Mount
+    // Setting authUser triggers the useEffect below which calls refreshTasks() (passing localToday to rollover & recurring RPCs)
     if (loadedSupabase.enabled && loadedSupabase.url && loadedSupabase.anonKey) {
       getAuthSession(loadedSupabase)
         .then(async (session) => {
@@ -616,56 +648,6 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
               isAuthenticated: true,
             });
             setUserId(session.user.id);
-
-            // Sequence on session init:
-            // 1. First, call rollover_incomplete_tasks
-            // 2. Second, call generate_due_recurring_tasks with local date parameter
-            // 3. Third, fetch daily_tasks for today and tomorrow and update state
-            const supabase = getSupabaseClient(loadedSupabase);
-            if (supabase) {
-              try {
-                const localToday = getLocalDateString();
-                const localTomorrow = getTomorrowDateString();
-
-                // 1. First, call rollover_incomplete_tasks
-                await supabase.rpc('rollover_incomplete_tasks');
-
-                // 2. Second, call generate_due_recurring_tasks with local date parameter
-                await supabase.rpc('generate_due_recurring_tasks', { p_today: localToday });
-
-                // 3. Third, fetch daily_tasks for today and tomorrow and update state
-                const { data, error } = await supabase
-                  .from('daily_tasks')
-                  .select('*')
-                  .eq('date_assigned', localToday)
-                  .order('order_index', { ascending: true });
-
-                if (error) {
-                  console.error('[TaskContext] Fetch error:', error);
-                }
-
-                const { data: tomorrowData, error: tomorrowError } = await supabase
-                  .from('daily_tasks')
-                  .select('*')
-                  .eq('date_assigned', localTomorrow)
-                  .order('order_index', { ascending: true });
-
-                if (tomorrowError) {
-                  console.error('[TaskContext] Fetch error (daily_tasks tomorrow):', tomorrowError);
-                }
-
-                const cloudToday: DailyTask[] = data || [];
-                const cloudTomorrow: DailyTask[] = tomorrowData || [];
-                const cloudDaily: DailyTask[] = [...cloudToday, ...cloudTomorrow];
-
-                // Disable Offline LocalStorage Overwrite for Authenticated Users:
-                // Supabase database must be single source of truth upon login.
-                setDailyTasks(cloudDaily);
-                StorageService.saveDailyTasks(cloudDaily);
-              } catch (initRpcErr) {
-                console.warn('[TaskContext] Initial daily RPC init skipped:', initRpcErr);
-              }
-            }
           } else {
             console.log('[TaskContext] No active session on mount, using local mode.');
             setAuthUser({
@@ -718,12 +700,12 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
   }, [supabaseConfig]);
 
-  // Fetch Once When User Authenticates or Session is Active
+  // Fetch When User Authenticates or Logical Day Changes (e.g. crossing the 4:00 AM reset time)
   useEffect(() => {
     if (authUser.isAuthenticated && authUser.id && authUser.id !== 'local-user') {
       refreshTasks();
     }
-  }, [authUser.id, authUser.isAuthenticated]);
+  }, [authUser.id, authUser.isAuthenticated, todayStr]);
 
   // Save Daily Tasks to Local Storage
   useEffect(() => {
@@ -765,15 +747,6 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         });
         setUserId(result.user.id);
 
-        try {
-          const supabase = getSupabaseClient(supabaseConfig);
-          if (supabase) {
-            const localToday = getLocalDateString();
-            await supabase.rpc('rollover_incomplete_tasks');
-            await supabase.rpc('generate_due_recurring_tasks', { p_today: localToday });
-          }
-        } catch {}
-
         await refreshTasks(result.user.id);
         return true;
       }
@@ -803,15 +776,6 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           isAuthenticated: true,
         });
         setUserId(result.user.id);
-
-        try {
-          const supabase = getSupabaseClient(supabaseConfig);
-          if (supabase) {
-            const localToday = getLocalDateString();
-            await supabase.rpc('rollover_incomplete_tasks');
-            await supabase.rpc('generate_due_recurring_tasks', { p_today: localToday });
-          }
-        } catch {}
 
         await refreshTasks(result.user.id);
         return true;
@@ -1038,7 +1002,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // 2. Call Supabase RPC to delete from database
     if (supabaseConfig.enabled && authUser.isAuthenticated) {
       try {
-        await clearAllDailyTasksRPC(supabaseConfig);
+        await clearAllDailyTasksRPC(supabaseConfig, today);
         await refreshTasks();
       } catch (err) {
         console.warn('[TaskContext] clear_all_daily_tasks RPC error:', err);
