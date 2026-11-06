@@ -41,10 +41,15 @@ export const BonusCelebrationModal: React.FC = () => {
             <div className="p-1.5 rounded-lg bg-emerald-500 text-white shrink-0 mt-0.5">
               <CheckCircle2 className="w-4 h-4" />
             </div>
-            <div>
-              <p className="text-xs text-emerald-700 dark:text-emerald-300 font-semibold uppercase tracking-wider">
-                Wanted: Special Bounty
-              </p>
+            <div className="flex-1">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs text-emerald-700 dark:text-emerald-300 font-semibold uppercase tracking-wider">
+                  Wanted: Special Bounty
+                </p>
+                <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500 text-white shadow-2xs">
+                  $10 Reward
+                </span>
+              </div>
               <p className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
                 {celebrationModalTask.title}
               </p>

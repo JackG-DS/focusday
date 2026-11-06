@@ -1,4 +1,12 @@
-import { DailyTask, PoolTask, RecurringTask, UserSettings, SupabaseConfig } from './types';
+import {
+  DailyTask,
+  PoolTask,
+  RecurringTask,
+  UserSettings,
+  SupabaseConfig,
+  BountyTaskMeta,
+  BountyLedgerEntry,
+} from './types';
 
 const STORAGE_KEYS = {
   DAILY_TASKS: 'antigravity_daily_tasks_v1',
@@ -8,11 +16,87 @@ const STORAGE_KEYS = {
   SUPABASE_CONFIG: 'antigravity_supabase_config_v1',
   SYNC_QUEUE: 'antigravity_sync_queue_v1',
   USER_ID: 'antigravity_user_id_v1',
+  BOUNTY_META: 'antigravity_bounty_meta_v1',
+  BOUNTY_LEDGER: 'antigravity_bounty_ledger_v1',
 };
 
-import { getLocalDateString, getTomorrowDateString } from './dateUtils';
-export { getLocalDateString, getTomorrowDateString };
+import {
+  getLocalDateString,
+  getTomorrowDateString,
+  getLogicalDayStartIso,
+  getWeekStartDateString,
+  getWeekEndDateString,
+  formatWeekRangeLabel,
+} from './dateUtils';
+export {
+  getLocalDateString,
+  getTomorrowDateString,
+  getLogicalDayStartIso,
+  getWeekStartDateString,
+  getWeekEndDateString,
+  formatWeekRangeLabel,
+};
 export const getTodayDateString = getLocalDateString;
+
+export function isTaskBonusBounty(task: DailyTask, poolTitlesSet?: Set<string>): boolean {
+  if (task.is_bonus === true) return true;
+  if (task.is_bonus === false) return false;
+  const trimmed = task.title.trim();
+  if (trimmed.startsWith('💰') || trimmed.startsWith('🎁')) return true;
+  if (poolTitlesSet && poolTitlesSet.has(trimmed.toLowerCase())) return true;
+  return false;
+}
+
+export function calculateTaskBountyValue(
+  task: DailyTask,
+  todayStr: string,
+  nowMs: number = Date.now(),
+  poolTitlesSet?: Set<string>
+): number {
+  if (isTaskBonusBounty(task, poolTitlesSet)) {
+    return 10;
+  }
+
+  if (task.completed && typeof task.bounty_earned === 'number') {
+    return task.bounty_earned;
+  }
+
+  // Tasks in Tomorrow's Leads stay at $100 until they move to Today's Most Wanted
+  if (task.date_assigned > todayStr) {
+    return 100;
+  }
+
+  const startIso = task.bounty_started_at || task.created_at;
+  const startMs = startIso ? new Date(startIso).getTime() : nowMs;
+  if (Number.isNaN(startMs) || nowMs <= startMs) {
+    return 100;
+  }
+
+  const hoursElapsed = Math.floor((nowMs - startMs) / (1000 * 60 * 60));
+  return Math.max(20, 100 - hoursElapsed);
+}
+
+export function getMinutesUntilNextDecay(
+  task: DailyTask,
+  todayStr: string,
+  nowMs: number = Date.now(),
+  poolTitlesSet?: Set<string>
+): number | null {
+  if (task.completed || isTaskBonusBounty(task, poolTitlesSet) || task.date_assigned > todayStr) {
+    return null;
+  }
+  const currentVal = calculateTaskBountyValue(task, todayStr, nowMs, poolTitlesSet);
+  if (currentVal <= 20) return null;
+
+  const startIso = task.bounty_started_at || task.created_at;
+  const startMs = startIso ? new Date(startIso).getTime() : nowMs;
+  if (Number.isNaN(startMs) || nowMs < startMs) return 60;
+
+  const elapsedMs = nowMs - startMs;
+  const msInCurrentHour = elapsedMs % (1000 * 60 * 60);
+  const msRemaining = 1000 * 60 * 60 - msInCurrentHour;
+  return Math.max(1, Math.ceil(msRemaining / (1000 * 60)));
+}
 
 export function formatReadableDate(dateStr: string): string {
   try {
@@ -259,6 +343,38 @@ export const StorageService = {
     localStorage.setItem(STORAGE_KEYS.SUPABASE_CONFIG, JSON.stringify(config));
   },
 
+  getBountyMetaMap(): Record<string, BountyTaskMeta> {
+    if (typeof window === 'undefined') return {};
+    const raw = localStorage.getItem(STORAGE_KEYS.BOUNTY_META);
+    if (!raw) return {};
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return {};
+    }
+  },
+
+  saveBountyMetaMap(metaMap: Record<string, BountyTaskMeta>): void {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(STORAGE_KEYS.BOUNTY_META, JSON.stringify(metaMap));
+  },
+
+  getBountyLedger(): BountyLedgerEntry[] {
+    if (typeof window === 'undefined') return [];
+    const raw = localStorage.getItem(STORAGE_KEYS.BOUNTY_LEDGER);
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  },
+
+  saveBountyLedger(ledger: BountyLedgerEntry[]): void {
+    if (typeof window === 'undefined') return;
+    localStorage.setItem(STORAGE_KEYS.BOUNTY_LEDGER, JSON.stringify(ledger));
+  },
+
   clearAllData(): void {
     if (typeof window === 'undefined') return;
     localStorage.removeItem(STORAGE_KEYS.DAILY_TASKS);
@@ -266,5 +382,7 @@ export const StorageService = {
     localStorage.removeItem(STORAGE_KEYS.RECURRING_TASKS);
     localStorage.removeItem(STORAGE_KEYS.SETTINGS);
     localStorage.removeItem(STORAGE_KEYS.SYNC_QUEUE);
+    localStorage.removeItem(STORAGE_KEYS.BOUNTY_META);
+    localStorage.removeItem(STORAGE_KEYS.BOUNTY_LEDGER);
   },
 };

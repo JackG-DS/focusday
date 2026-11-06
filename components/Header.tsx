@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Sparkles, Flame, RefreshCw, Moon, Sun, Laptop, User } from 'lucide-react';
+import { Sparkles, Flame, RefreshCw, Moon, Sun, Laptop, User, Coins } from 'lucide-react';
 import { useTaskContext } from '@/context/TaskContext';
 import { formatReadableDate } from '@/lib/storage';
 
@@ -17,6 +17,8 @@ export const Header: React.FC = () => {
     todaysCompletionPercentage,
     setActiveTab,
     authUser,
+    currentWeekBountyPool,
+    currentWeekRangeLabel,
   } = useTaskContext();
 
   const completedCount = todaysTasks.filter((t) => t.completed).length;
@@ -72,6 +74,17 @@ export const Header: React.FC = () => {
                 <span className="truncate">{authUser.email?.split('@')[0]}</span>
               </button>
             )}
+
+            {/* Weekly Bounty Pool Pill */}
+            <button
+              type="button"
+              onClick={() => setActiveTab('history')}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300/70 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 text-xs font-extrabold shadow-2xs hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
+              title={`Weekly Bounty Pool (${currentWeekRangeLabel}): $${currentWeekBountyPool} — Resets End of Day Sunday`}
+            >
+              <Coins className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>${currentWeekBountyPool}</span>
+            </button>
 
             {/* Streak Counter */}
             <div 

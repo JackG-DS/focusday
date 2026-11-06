@@ -10,6 +10,36 @@ export interface DailyTask {
   order_index: number;
   date_assigned: string; // YYYY-MM-DD
   created_at: string;
+  is_bonus?: boolean; // true if pulled from Bounties ($10 fixed), false/undefined if Most Wanted ($100 -> -$1/hr -> min $20)
+  bounty_started_at?: string; // ISO timestamp when hourly decay started on Most Wanted
+  bounty_earned?: number | null; // Locked-in $ value when completed
+  completed_at?: string | null; // ISO timestamp when completed
+}
+
+export interface BountyTaskMeta {
+  is_bonus?: boolean;
+  bounty_started_at?: string;
+  bounty_earned?: number | null;
+  completed_at?: string | null;
+}
+
+export interface BountyLedgerEntry {
+  taskId: string;
+  title: string;
+  amount: number;
+  date: string; // YYYY-MM-DD logical date when completed
+  weekStart: string; // Monday YYYY-MM-DD of that week
+  completedAt: string; // ISO timestamp
+  isBonus?: boolean;
+}
+
+export interface WeeklyBountySummary {
+  weekStart: string; // Monday YYYY-MM-DD
+  weekEnd: string; // Sunday YYYY-MM-DD
+  label: string; // e.g. "Nov 2–8"
+  totalAmount: number;
+  tasksCount: number;
+  isCurrentWeek: boolean;
 }
 
 export interface PoolTask {

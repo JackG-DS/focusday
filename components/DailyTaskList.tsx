@@ -28,6 +28,9 @@ import {
   Sunset,
   RotateCcw,
   Sparkles,
+  Coins,
+  TrendingDown,
+  Clock,
 } from 'lucide-react';
 
 export const DailyTaskList: React.FC = () => {
@@ -42,6 +45,11 @@ export const DailyTaskList: React.FC = () => {
     endDay,
     resumeDay,
     isDayEnded,
+    currentWeekBountyPool,
+    todayBountyEarned,
+    currentWeekRangeLabel,
+    isSundayPoolReset,
+    setActiveTab,
   } = useTaskContext();
 
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -96,6 +104,67 @@ export const DailyTaskList: React.FC = () => {
 
   return (
     <div className="space-y-3">
+      {/* Weekly Bounty Pool Card */}
+      <div className="p-4 rounded-3xl bg-gradient-to-br from-amber-500/15 via-emerald-500/10 to-teal-500/15 border border-amber-500/30 dark:border-amber-500/25 shadow-xs">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-emerald-600 text-white flex items-center justify-center shadow-md shadow-amber-500/20 shrink-0">
+              <Coins className="w-6 h-6" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                  Weekly Bounty Pool
+                </span>
+                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border border-slate-200/70 dark:border-slate-700">
+                  {currentWeekRangeLabel}
+                </span>
+              </div>
+              <div className="flex items-baseline gap-2.5 mt-0.5">
+                <span className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
+                  ${currentWeekBountyPool}
+                </span>
+                {todayBountyEarned > 0 && (
+                  <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                    +${todayBountyEarned} today
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-col items-start sm:items-end justify-between text-xs gap-1">
+            <button
+              type="button"
+              onClick={() => setActiveTab('history')}
+              className="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-1"
+            >
+              <span>View Weekly Chart →</span>
+            </button>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+              <Clock className="w-3 h-3 text-amber-500 shrink-0" />
+              <span>
+                {isSundayPoolReset
+                  ? 'Sunday EOD reached — Pool reset for the new week!'
+                  : 'Resets automatically at End of Day Sunday'}
+              </span>
+            </span>
+          </div>
+        </div>
+
+        <div className="mt-2.5 pt-2 border-t border-amber-500/20 dark:border-slate-700/60 flex items-center justify-between gap-2 flex-wrap text-[11px] text-slate-600 dark:text-slate-400">
+          <span className="flex items-center gap-1">
+            <TrendingDown className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span>
+              <strong>Most Wanted:</strong> Starts at <strong>$100</strong> (-$1/hr, min <strong>$20</strong>)
+            </span>
+          </span>
+          <span>
+            <strong>Bounties:</strong> Flat <strong>$10</strong> (no decay)
+          </span>
+        </div>
+      </div>
+
       {/* Rollover Alert Banner */}
       {rolloverReport && rolloverReport.migratedCount > 0 && (
         <div className="flex items-center justify-between gap-2 p-3 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-2xl text-amber-800 dark:text-amber-300 text-xs sm:text-sm animate-slide-up shadow-xs">

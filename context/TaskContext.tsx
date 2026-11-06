@@ -14,14 +14,24 @@ import {
   RolloverReport,
   AuthUserState,
   TaskActionResult,
+  BountyTaskMeta,
+  BountyLedgerEntry,
+  WeeklyBountySummary,
 } from '@/lib/types';
 import {
   StorageService,
   getTodayDateString,
   generateUUID,
   getOrCreateUserId,
+  calculateTaskBountyValue,
+  getMinutesUntilNextDecay,
+  isTaskBonusBounty,
+  getLogicalDayStartIso,
+  getWeekStartDateString,
+  getWeekEndDateString,
+  formatWeekRangeLabel,
 } from '@/lib/storage';
-import { getLocalDateString, getTomorrowDateString, getLogicalDate } from '@/lib/dateUtils';
+import { getLocalDateString, getTomorrowDateString, getLogicalDate, formatDateComponents } from '@/lib/dateUtils';
 import {
   getSupabaseClient,
   getAuthSession,
@@ -110,6 +120,17 @@ interface TaskContextType {
   isTodayAllCompleted: boolean;
   todaysCompletionPercentage: number;
 
+  // Bounty System & Weekly Pool
+  getTaskBountyValue: (task: DailyTask) => number;
+  getTaskMinutesUntilDecay: (task: DailyTask) => number | null;
+  isTaskBonus: (task: DailyTask) => boolean;
+  currentWeekBountyPool: number;
+  todayBountyEarned: number;
+  currentWeekRangeLabel: string;
+  isSundayPoolReset: boolean;
+  weeklyBountyHistory: WeeklyBountySummary[];
+  getDateBountyTotal: (date: string) => number;
+
   // Bonus Reward Celebration
   celebrationModalTask: DailyTask | null;
   dismissCelebrationModal: () => void;
@@ -144,6 +165,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [dailyTasks, setDailyTasks] = useState<DailyTask[]>([]);
   const [poolTasks, setPoolTasks] = useState<PoolTask[]>([]);
   const [recurringTasks, setRecurringTasks] = useState<RecurringTask[]>([]);
+  const [bountyMetaMap, setBountyMetaMap] = useState<Record<string, BountyTaskMeta>>({});
+  const [bountyLedger, setBountyLedger] = useState<BountyLedgerEntry[]>([]);
   const [settings, setSettings] = useState<UserSettings>(StorageService.getSettings());
   const [supabaseConfig, setSupabaseConfig] = useState<SupabaseConfig>(StorageService.getSupabaseConfig());
   const [rolloverReport, setRolloverReport] = useState<RolloverReport | null>(null);
@@ -408,27 +431,15 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.warn('[TaskContext] generate_due_recurring_tasks RPC error:', recurringRpcErr);
           }
 
-          // 5. Fetch daily_tasks for today and tomorrow and update state:
-          // Date Filter Guard: Main Today List
-          const { data, error } = await supabase
+          // 5. Fetch all daily_tasks for the user (today, tomorrow, and historical archive)
+          const { data: allDailyData, error: allDailyError } = await supabase
             .from('daily_tasks')
             .select('*')
-            .eq('date_assigned', localToday)
+            .order('date_assigned', { ascending: false })
             .order('order_index', { ascending: true });
 
-          if (error) {
-            console.error('[TaskContext] Fetch error:', error);
-          }
-
-          // Tomorrow Preview List
-          const { data: tomorrowData, error: tomorrowError } = await supabase
-            .from('daily_tasks')
-            .select('*')
-            .eq('date_assigned', localTomorrow)
-            .order('order_index', { ascending: true });
-
-          if (tomorrowError) {
-            console.error('[TaskContext] Fetch error (daily_tasks tomorrow):', tomorrowError);
+          if (allDailyError) {
+            console.error('[TaskContext] Fetch error:', allDailyError);
           }
 
           let cloudPool: PoolTask[] = [];
@@ -455,13 +466,58 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             console.error('[TaskContext] Fetch error (pool/recurring):', extraErr);
           }
 
-          const cloudToday: DailyTask[] = data || [];
-          const cloudTomorrow: DailyTask[] = tomorrowData || [];
-          const cloudDaily: DailyTask[] = [...cloudToday, ...cloudTomorrow];
+          const storedMeta = StorageService.getBountyMetaMap();
+          const poolTitleSet = new Set(cloudPool.map((p) => p.title.trim().toLowerCase()));
+          const rawCloudDaily: DailyTask[] = allDailyData || [];
+
+          const cloudDaily: DailyTask[] = rawCloudDaily.map((t) => {
+            const meta = storedMeta[t.id];
+            const inferredBonus =
+              t.is_bonus ?? meta?.is_bonus ?? isTaskBonusBounty(t, poolTitleSet);
+            return {
+              ...t,
+              is_bonus: inferredBonus,
+              bounty_started_at: t.bounty_started_at || meta?.bounty_started_at || t.created_at,
+              bounty_earned: t.bounty_earned ?? meta?.bounty_earned ?? null,
+              completed_at: t.completed_at ?? meta?.completed_at ?? null,
+            };
+          });
+
+          // Backfill any completed cloud tasks into the local bounty ledger so weekly pool & history chart stay synced
+          const storedLedger = StorageService.getBountyLedger();
+          const ledgerByTaskId = new Map(storedLedger.map((entry) => [entry.taskId, entry]));
+          let ledgerChanged = false;
+
+          for (const t of cloudDaily) {
+            if (t.completed && !ledgerByTaskId.has(t.id)) {
+              const amount =
+                typeof t.bounty_earned === 'number'
+                  ? t.bounty_earned
+                  : t.is_bonus
+                  ? 10
+                  : calculateTaskBountyValue(t, t.date_assigned, Date.now(), poolTitleSet);
+              const entry: BountyLedgerEntry = {
+                taskId: t.id,
+                title: t.title,
+                amount,
+                date: t.date_assigned,
+                weekStart: getWeekStartDateString(t.date_assigned),
+                completedAt: t.completed_at || t.created_at || new Date().toISOString(),
+                isBonus: Boolean(t.is_bonus),
+              };
+              ledgerByTaskId.set(t.id, entry);
+              ledgerChanged = true;
+            }
+          }
+
+          if (ledgerChanged) {
+            const updatedLedger = Array.from(ledgerByTaskId.values());
+            setBountyLedger(updatedLedger);
+            StorageService.saveBountyLedger(updatedLedger);
+          }
 
           console.log('[TaskContext] Tasks fetched from cloud:', {
-            todayCount: cloudToday.length,
-            tomorrowCount: cloudTomorrow.length,
+            totalDailyCount: cloudDaily.length,
             poolCount: cloudPool.length,
             recurringCount: cloudRecurring.length,
           });
@@ -518,6 +574,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const loadedRecurring = StorageService.getRecurringTasks(localUid);
     const loadedSettings = StorageService.getSettings();
     const loadedSupabase = StorageService.getSupabaseConfig();
+    const loadedMeta = StorageService.getBountyMetaMap();
+    let loadedLedger = StorageService.getBountyLedger();
     const today = getLocalDateString(new Date(), loadedSettings.reset_time);
 
     // Auto-Reset Check on Local Storage (only when logical date advances past last_reset_date)
@@ -554,8 +612,10 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const isDue = r.frequency === 'daily' || (r.frequency === 'weekly' && r.day_of_week === currentDow);
         if (isDue && !existingActiveTitles.has(r.title.toLowerCase().trim())) {
           maxOrder += 1;
+          const nowIso = new Date().toISOString();
+          const newId = generateUUID();
           loadedDaily.push({
-            id: generateUUID(),
+            id: newId,
             user_id: localUid,
             title: r.title,
             notes: r.notes || null,
@@ -563,11 +623,15 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             completed: false,
             order_index: maxOrder,
             date_assigned: today,
-            created_at: new Date().toISOString(),
+            created_at: nowIso,
+            is_bonus: false,
+            bounty_started_at: nowIso,
           });
+          loadedMeta[newId] = { is_bonus: false, bounty_started_at: nowIso };
           existingActiveTitles.add(r.title.toLowerCase().trim());
         }
       }
+      StorageService.saveBountyMetaMap(loadedMeta);
     }
 
     // Local Rollover (only when offline / local mode; cloud rollover runs in refreshTasks with p_today)
@@ -628,9 +692,52 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       StorageService.saveSettings(loadedSettings);
     }
 
+    // Enrich loadedDaily with stored bounty meta & backfill ledger for any already-completed tasks
+    const poolTitleSet = new Set(loadedPool.map((p) => p.title.trim().toLowerCase()));
+    loadedDaily = loadedDaily.map((t) => {
+      const meta = loadedMeta[t.id];
+      const inferredBonus = t.is_bonus ?? meta?.is_bonus ?? isTaskBonusBounty(t, poolTitleSet);
+      return {
+        ...t,
+        is_bonus: inferredBonus,
+        bounty_started_at: t.bounty_started_at || meta?.bounty_started_at || t.created_at,
+        bounty_earned: t.bounty_earned ?? meta?.bounty_earned ?? null,
+        completed_at: t.completed_at ?? meta?.completed_at ?? null,
+      };
+    });
+
+    const ledgerMap = new Map(loadedLedger.map((entry) => [entry.taskId, entry]));
+    let ledgerUpdated = false;
+    for (const t of loadedDaily) {
+      if (t.completed && !ledgerMap.has(t.id)) {
+        const earned =
+          typeof t.bounty_earned === 'number'
+            ? t.bounty_earned
+            : t.is_bonus
+            ? 10
+            : calculateTaskBountyValue(t, t.date_assigned, Date.now(), poolTitleSet);
+        ledgerMap.set(t.id, {
+          taskId: t.id,
+          title: t.title,
+          amount: earned,
+          date: t.date_assigned,
+          weekStart: getWeekStartDateString(t.date_assigned),
+          completedAt: t.completed_at || t.created_at || new Date().toISOString(),
+          isBonus: Boolean(t.is_bonus),
+        });
+        ledgerUpdated = true;
+      }
+    }
+    if (ledgerUpdated) {
+      loadedLedger = Array.from(ledgerMap.values());
+      StorageService.saveBountyLedger(loadedLedger);
+    }
+
     setDailyTasks(loadedDaily);
     setPoolTasks(loadedPool);
     setRecurringTasks(loadedRecurring);
+    setBountyMetaMap(loadedMeta);
+    setBountyLedger(loadedLedger);
     setSettings(loadedSettings);
     setSupabaseConfig(loadedSupabase);
     setIsClientReady(true);
@@ -867,6 +974,110 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return Math.round((completedCount / todaysTasks.length) * 100);
   }, [todaysTasks]);
 
+  const poolTitlesSet = useMemo(() => {
+    return new Set(poolTasks.map((p) => p.title.trim().toLowerCase()));
+  }, [poolTasks]);
+
+  const isTaskBonus = useCallback(
+    (task: DailyTask) => {
+      return isTaskBonusBounty(task, poolTitlesSet);
+    },
+    [poolTitlesSet]
+  );
+
+  const getTaskBountyValue = useCallback(
+    (task: DailyTask) => {
+      // clockTick dependency ensures live hourly updates while app is open
+      void clockTick;
+      return calculateTaskBountyValue(task, todayStr, Date.now(), poolTitlesSet);
+    },
+    [todayStr, clockTick, poolTitlesSet]
+  );
+
+  const getTaskMinutesUntilDecay = useCallback(
+    (task: DailyTask) => {
+      void clockTick;
+      return getMinutesUntilNextDecay(task, todayStr, Date.now(), poolTitlesSet);
+    },
+    [todayStr, clockTick, poolTitlesSet]
+  );
+
+  const currentWeekStart = useMemo(() => getWeekStartDateString(todayStr), [todayStr]);
+  const currentWeekRangeLabel = useMemo(() => formatWeekRangeLabel(currentWeekStart), [currentWeekStart]);
+
+  // Check if today is Sunday and the user has ended the day ("End of Day Sunday" reset)
+  const isSundayPoolReset = useMemo(() => {
+    const logicalDow = getLogicalDate(new Date(), settings.reset_time).getDay();
+    return logicalDow === 0 && isDayEnded;
+  }, [settings.reset_time, isDayEnded, clockTick]);
+
+  // Current week's bounty pool (Mon-Sun; resets automatically at End of Day Sunday)
+  const currentWeekBountyPool = useMemo(() => {
+    if (isSundayPoolReset) return 0;
+    return bountyLedger
+      .filter((entry) => entry.weekStart === currentWeekStart)
+      .reduce((sum, entry) => sum + entry.amount, 0);
+  }, [bountyLedger, currentWeekStart, isSundayPoolReset]);
+
+  // Bounty earned today
+  const todayBountyEarned = useMemo(() => {
+    return bountyLedger
+      .filter((entry) => entry.date === todayStr)
+      .reduce((sum, entry) => sum + entry.amount, 0);
+  }, [bountyLedger, todayStr]);
+
+  const getDateBountyTotal = useCallback(
+    (date: string) => {
+      return bountyLedger
+        .filter((entry) => entry.date === date)
+        .reduce((sum, entry) => sum + entry.amount, 0);
+    },
+    [bountyLedger]
+  );
+
+  // Weekly Bounty History for the History tab chart (last 6 weeks + any earlier weeks with data)
+  const weeklyBountyHistory = useMemo((): WeeklyBountySummary[] => {
+    const weekMap = new Map<string, { totalAmount: number; tasksCount: number }>();
+
+    // Seed last 6 weeks (oldest to newest ending with currentWeekStart)
+    const parts = currentWeekStart.split('-');
+    if (parts.length === 3) {
+      const baseMonday = new Date(
+        parseInt(parts[0], 10),
+        parseInt(parts[1], 10) - 1,
+        parseInt(parts[2], 10)
+      );
+      for (let i = 5; i >= 0; i--) {
+        const d = new Date(baseMonday.getTime());
+        d.setDate(d.getDate() - i * 7);
+        const wStart = formatDateComponents(d);
+        weekMap.set(wStart, { totalAmount: 0, tasksCount: 0 });
+      }
+    }
+
+    for (const entry of bountyLedger) {
+      const wStart = entry.weekStart || getWeekStartDateString(entry.date);
+      const existing = weekMap.get(wStart) || { totalAmount: 0, tasksCount: 0 };
+      weekMap.set(wStart, {
+        totalAmount: existing.totalAmount + entry.amount,
+        tasksCount: existing.tasksCount + 1,
+      });
+    }
+
+    const sortedWeeks = Array.from(weekMap.keys()).sort((a, b) => a.localeCompare(b));
+    return sortedWeeks.slice(-8).map((wStart) => {
+      const data = weekMap.get(wStart) || { totalAmount: 0, tasksCount: 0 };
+      return {
+        weekStart: wStart,
+        weekEnd: getWeekEndDateString(wStart),
+        label: formatWeekRangeLabel(wStart),
+        totalAmount: data.totalAmount,
+        tasksCount: data.tasksCount,
+        isCurrentWeek: wStart === currentWeekStart,
+      };
+    });
+  }, [bountyLedger, currentWeekStart]);
+
   // Add Daily Task (Supports Today, Tomorrow, and Deduplication)
   const addDailyTask = useCallback(
     async (
@@ -894,8 +1105,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
           success: false,
           duplicate: true,
           message: isTargetTomorrow
-            ? 'Task is already on tomorrow’s list'
-            : 'Task is already active on today’s list',
+            ? 'Target is already on tomorrow’s leads'
+            : 'Target is already active on Most Wanted',
         };
       }
 
@@ -906,6 +1117,12 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       const currentActiveUserId = authUser.isAuthenticated ? authUser.id : userId;
 
+      // Tasks added to Tomorrow's Leads start decreasing only when they move to Today's Most Wanted
+      const startTimestamp =
+        targetDate > todayStr
+          ? getLogicalDayStartIso(targetDate, settings.reset_time)
+          : new Date().toISOString();
+
       const newTask: DailyTask = {
         id: generateUUID(),
         user_id: currentActiveUserId,
@@ -915,8 +1132,19 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         completed: false,
         order_index: maxOrder + 1,
         date_assigned: targetDate,
-        created_at: new Date().toISOString(),
+        created_at: startTimestamp,
+        is_bonus: false,
+        bounty_started_at: startTimestamp,
       };
+
+      setBountyMetaMap((prev) => {
+        const next = {
+          ...prev,
+          [newTask.id]: { is_bonus: false, bounty_started_at: startTimestamp },
+        };
+        StorageService.saveBountyMetaMap(next);
+        return next;
+      });
 
       setDailyTasks((prev) => {
         const updated = [...prev, newTask];
@@ -928,7 +1156,17 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const client = getSupabaseClient(supabaseConfig);
         if (client) {
           try {
-            await client.from('daily_tasks').insert(newTask);
+            await client.from('daily_tasks').insert({
+              id: newTask.id,
+              user_id: newTask.user_id,
+              title: newTask.title,
+              notes: newTask.notes,
+              color: newTask.color,
+              completed: newTask.completed,
+              order_index: newTask.order_index,
+              date_assigned: newTask.date_assigned,
+              created_at: newTask.created_at,
+            });
           } catch (e) {
             console.warn('Failed to insert daily task to cloud:', e);
           }
@@ -937,7 +1175,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       return { success: true, task: newTask };
     },
-    [dailyTasks, userId, authUser, supabaseConfig, tomorrowStr]
+    [dailyTasks, userId, authUser, supabaseConfig, tomorrowStr, todayStr, settings.reset_time]
   );
 
   // Move Task from Tomorrow (or any date) to Today
@@ -947,13 +1185,34 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!task) return;
 
       const localToday = getLocalDateString();
+      const nowIso = new Date().toISOString();
       const currentTodayTasks = dailyTasks.filter((t) => t.date_assigned === localToday);
       const maxOrder = currentTodayTasks.length > 0 ? Math.max(...currentTodayTasks.map((t) => t.order_index)) : -1;
 
+      setBountyMetaMap((prev) => {
+        const next = {
+          ...prev,
+          [taskId]: {
+            ...(prev[taskId] || {}),
+            is_bonus: Boolean(task.is_bonus),
+            bounty_started_at: nowIso,
+          },
+        };
+        StorageService.saveBountyMetaMap(next);
+        return next;
+      });
+
       // 1. Optimistic Local State Update: cleanly transitions item between tomorrowTasks and todaysTasks
+      // and starts the $100 -> -$1/hr decay timer now!
       const updatedTasks = dailyTasks.map((t) =>
         t.id === taskId
-          ? { ...t, date_assigned: localToday, order_index: maxOrder + 1 }
+          ? {
+              ...t,
+              date_assigned: localToday,
+              order_index: maxOrder + 1,
+              created_at: nowIso,
+              bounty_started_at: nowIso,
+            }
           : t
       );
       setDailyTasks(updatedTasks);
@@ -970,13 +1229,26 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
               p_new_date: localToday 
             });
 
+            await supabase
+              .from('daily_tasks')
+              .update({ created_at: nowIso })
+              .eq('id', taskId);
+
             if (error) {
               console.error('[TaskContext] move_task_to_date error:', error);
             } else if (data) {
-              // Update state directly with the returned record without relying on a full page reload
               const returnedTask = data as DailyTask;
               setDailyTasks((prev) => {
-                const next = prev.map((t) => (t.id === taskId ? returnedTask : t));
+                const next = prev.map((t) =>
+                  t.id === taskId
+                    ? {
+                        ...returnedTask,
+                        created_at: nowIso,
+                        is_bonus: Boolean(task.is_bonus),
+                        bounty_started_at: nowIso,
+                      }
+                    : t
+                );
                 StorageService.saveDailyTasks(next);
                 return next;
               });
@@ -1029,15 +1301,29 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
               return null;
             }
 
+            const enrichedBonus: DailyTask = {
+              ...bonusTask,
+              is_bonus: true,
+            };
+
+            setBountyMetaMap((prev) => {
+              const next = {
+                ...prev,
+                [enrichedBonus.id]: { is_bonus: true, bounty_started_at: enrichedBonus.created_at },
+              };
+              StorageService.saveBountyMetaMap(next);
+              return next;
+            });
+
             setDailyTasks((prev) => {
-              if (prev.some((t) => t.id === bonusTask.id)) return prev;
-              const updated = [...prev, bonusTask];
+              if (prev.some((t) => t.id === enrichedBonus.id)) return prev;
+              const updated = [...prev, enrichedBonus];
               StorageService.saveDailyTasks(updated);
               return updated;
             });
             // Preserved: The Bonus Pool acts as an indefinite library/reservoir.
             // Do NOT remove from poolTasks frontend state or pool_tasks table.
-            return bonusTask;
+            return enrichedBonus;
           }
         } catch (rpcErr) {
           console.warn('[TaskContext] RPC pull_bonus_task fallback:', rpcErr);
@@ -1063,6 +1349,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const maxOrder = todayDaily.length > 0 ? Math.max(...todayDaily.map((t) => t.order_index)) : -1;
 
       const currentActiveUserId = authUser.isAuthenticated ? authUser.id : userId;
+      const nowIso = new Date().toISOString();
 
       const newDailyTask: DailyTask = {
         id: generateUUID(),
@@ -1073,8 +1360,19 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         completed: false,
         order_index: maxOrder + 1,
         date_assigned: localToday,
-        created_at: new Date().toISOString(),
+        created_at: nowIso,
+        is_bonus: true,
+        bounty_started_at: nowIso,
       };
+
+      setBountyMetaMap((prev) => {
+        const next = {
+          ...prev,
+          [newDailyTask.id]: { is_bonus: true, bounty_started_at: nowIso },
+        };
+        StorageService.saveBountyMetaMap(next);
+        return next;
+      });
 
       setDailyTasks((prev) => {
         const updated = [...prev, newDailyTask];
@@ -1087,7 +1385,17 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (client) {
           try {
             // Only insert into daily_tasks; DO NOT delete from pool_tasks!
-            await client.from('daily_tasks').insert(newDailyTask);
+            await client.from('daily_tasks').insert({
+              id: newDailyTask.id,
+              user_id: newDailyTask.user_id,
+              title: newDailyTask.title,
+              notes: newDailyTask.notes,
+              color: newDailyTask.color,
+              completed: newDailyTask.completed,
+              order_index: newDailyTask.order_index,
+              date_assigned: newDailyTask.date_assigned,
+              created_at: newDailyTask.created_at,
+            });
           } catch (e) {
             console.warn('Failed to sync pulled bonus task to cloud:', e);
           }
@@ -1107,10 +1415,61 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       if (!task) return;
 
       const nextCompleted = !task.completed;
+      const nowIso = new Date().toISOString();
+      const earnedAmount = nextCompleted
+        ? calculateTaskBountyValue(task, today, Date.now(), poolTitlesSet)
+        : null;
+
+      // Update Bounty Meta & Weekly Bounty Ledger
+      setBountyMetaMap((prev) => {
+        const existing = prev[id] || {};
+        const next = {
+          ...prev,
+          [id]: {
+            ...existing,
+            is_bonus: isTaskBonusBounty(task, poolTitlesSet),
+            bounty_started_at: task.bounty_started_at || existing.bounty_started_at || task.created_at,
+            bounty_earned: earnedAmount,
+            completed_at: nextCompleted ? nowIso : null,
+          },
+        };
+        StorageService.saveBountyMetaMap(next);
+        return next;
+      });
+
+      setBountyLedger((prev) => {
+        const filtered = prev.filter((entry) => entry.taskId !== id);
+        if (nextCompleted && earnedAmount !== null) {
+          const completedDate = task.date_assigned || today;
+          const nextLedger: BountyLedgerEntry[] = [
+            ...filtered,
+            {
+              taskId: id,
+              title: task.title,
+              amount: earnedAmount,
+              date: completedDate,
+              weekStart: getWeekStartDateString(completedDate),
+              completedAt: nowIso,
+              isBonus: isTaskBonusBounty(task, poolTitlesSet),
+            },
+          ];
+          StorageService.saveBountyLedger(nextLedger);
+          return nextLedger;
+        }
+        StorageService.saveBountyLedger(filtered);
+        return filtered;
+      });
 
       // 1. Optimistic Local State Update
       const updatedTasks = dailyTasks.map((t) =>
-        t.id === id ? { ...t, completed: nextCompleted } : t
+        t.id === id
+          ? {
+              ...t,
+              completed: nextCompleted,
+              bounty_earned: earnedAmount,
+              completed_at: nextCompleted ? nowIso : null,
+            }
+          : t
       );
       setDailyTasks(updatedTasks);
       StorageService.saveDailyTasks(updatedTasks);
@@ -1172,10 +1531,27 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
                   return;
                 }
 
-                console.log('[TaskContext] Continuous bonus task pulled:', bonusTask);
+                const enrichedBonus: DailyTask = {
+                  ...bonusTask,
+                  is_bonus: true,
+                };
+
+                setBountyMetaMap((prev) => {
+                  const next = {
+                    ...prev,
+                    [enrichedBonus.id]: {
+                      is_bonus: true,
+                      bounty_started_at: enrichedBonus.created_at,
+                    },
+                  };
+                  StorageService.saveBountyMetaMap(next);
+                  return next;
+                });
+
+                console.log('[TaskContext] Continuous bonus task pulled:', enrichedBonus);
                 setDailyTasks((prev) => {
-                  if (prev.some((t) => t.id === bonusTask.id)) return prev;
-                  const next = [...prev, bonusTask];
+                  if (prev.some((t) => t.id === enrichedBonus.id)) return prev;
+                  const next = [...prev, enrichedBonus];
                   StorageService.saveDailyTasks(next);
                   return next;
                 });
@@ -1205,6 +1581,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       triggerConfetti,
       updateSettings,
       poolTasks,
+      poolTitlesSet,
       pullBonusTaskToToday,
       refreshTasks,
       supabaseConfig,
@@ -1542,14 +1919,28 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
             }
 
             if (newTask) {
+              const nowIso = newTask.created_at || new Date().toISOString();
+              const enriched: DailyTask = {
+                ...newTask,
+                is_bonus: false,
+                bounty_started_at: nowIso,
+              };
+              setBountyMetaMap((prev) => {
+                const next = {
+                  ...prev,
+                  [enriched.id]: { is_bonus: false, bounty_started_at: nowIso },
+                };
+                StorageService.saveBountyMetaMap(next);
+                return next;
+              });
               setDailyTasks((prev) => {
-                if (prev.some((t) => t.id === newTask.id)) return prev;
-                const next = [...prev, newTask];
+                if (prev.some((t) => t.id === enriched.id)) return prev;
+                const next = [...prev, enriched];
                 StorageService.saveDailyTasks(next);
                 return next;
               });
               await refreshTasks();
-              return { success: true, task: newTask };
+              return { success: true, task: enriched };
             } else {
               // RPC returned null because task already exists active in database
               return {
@@ -1586,6 +1977,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setDailyTasks(StorageService.getDailyTasks(uid));
     setPoolTasks(StorageService.getPoolTasks(uid));
     setRecurringTasks(StorageService.getRecurringTasks(uid));
+    setBountyMetaMap({});
+    setBountyLedger([]);
     setSettings(StorageService.getSettings());
     setSyncStatus('idle');
     setIsSyncing(false);
@@ -1644,6 +2037,15 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         streakCount: settings.streakCount || 1,
         isTodayAllCompleted,
         todaysCompletionPercentage,
+        getTaskBountyValue,
+        getTaskMinutesUntilDecay,
+        isTaskBonus,
+        currentWeekBountyPool,
+        todayBountyEarned,
+        currentWeekRangeLabel,
+        isSundayPoolReset,
+        weeklyBountyHistory,
+        getDateBountyTotal,
         celebrationModalTask,
         dismissCelebrationModal,
         triggerConfetti,

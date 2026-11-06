@@ -43,7 +43,7 @@ export const PoolManager: React.FC = () => {
               </span>
             </h2>
             <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-              Post side contracts and extra rewards here. Whenever you capture <strong>100%</strong> of your active <strong>Most Wanted</strong> targets, a random <strong>Bounty</strong> from this board is automatically posted for you to claim!
+              Post side contracts and extra rewards here. Each Bounty is worth a fixed <strong>$10</strong> (does not decrease over time). Whenever you capture <strong>100%</strong> of your active <strong>Most Wanted</strong> targets, a random <strong>Bounty</strong> from this board is automatically posted for you to claim!
             </p>
           </div>
         </div>
@@ -96,10 +96,16 @@ export const PoolManager: React.FC = () => {
               key={task.id}
               className="flex items-center justify-between gap-3 p-3.5 bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-2xl shadow-xs hover:border-slate-300 dark:hover:border-slate-600 transition-all"
             >
-              <div className="flex items-center gap-2.5 min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
                 <span className="text-indigo-500 font-bold text-sm">💰</span>
                 <span className="text-sm sm:text-base font-medium text-slate-800 dark:text-slate-100 break-words">
                   {task.title}
+                </span>
+                <span
+                  className="inline-flex items-center text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/70 shrink-0"
+                  title="Fixed $10 bounty reward (does not decrease)"
+                >
+                  $10 Fixed
                 </span>
               </div>
 

@@ -132,7 +132,7 @@ export const TomorrowPreview: React.FC = () => {
               </span>
             </div>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Scout and line up wanted notices ahead of time
+              Starts at <strong>$100</strong> — hourly -$1 decay begins when moved to Today&apos;s Most Wanted
             </p>
           </div>
         </div>
@@ -211,6 +211,13 @@ export const TomorrowPreview: React.FC = () => {
                             )}
                             <span className="text-xs sm:text-sm font-semibold text-slate-800 dark:text-slate-100 break-words">
                               {task.title}
+                            </span>
+
+                            <span
+                              className="inline-flex items-center gap-1 text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300/70 dark:border-amber-800/70 shrink-0"
+                              title="Worth $100. Begins decreasing by $1/hr once moved to Today's Most Wanted"
+                            >
+                              $100 (Paused)
                             </span>
 
                             {hasNotes && !isExpanded && (

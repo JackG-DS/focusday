@@ -43,7 +43,14 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
     updateDailyTaskNotes,
     updateDailyTaskColor,
     deleteDailyTask,
+    getTaskBountyValue,
+    getTaskMinutesUntilDecay,
+    isTaskBonus,
   } = useTaskContext();
+
+  const bountyValue = getTaskBountyValue(task);
+  const minutesUntilDecay = getTaskMinutesUntilDecay(task);
+  const isBonus = isTaskBonus(task);
 
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState(task.title);
@@ -214,6 +221,48 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
               >
                 {task.title}
               </span>
+
+              {/* Bounty Value Badge */}
+              {isBonus ? (
+                <span
+                  className={`inline-flex items-center gap-1 text-[11px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${
+                    task.completed
+                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                      : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/70'
+                  }`}
+                  title={
+                    task.completed
+                      ? 'Bounty reward claimed: +$10 added to weekly pool'
+                      : 'Bonus Bounty task: Fixed $10 value (does not decrease)'
+                  }
+                >
+                  <span>{task.completed ? `+$${bountyValue} Claimed` : `$${bountyValue} BOUNTY`}</span>
+                </span>
+              ) : (
+                <span
+                  className={`inline-flex items-center gap-1 text-[11px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${
+                    task.completed
+                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
+                      : bountyValue <= 20
+                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
+                      : 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300/70 dark:border-amber-800/70'
+                  }`}
+                  title={
+                    task.completed
+                      ? `Most Wanted reward claimed: +$${bountyValue} added to weekly pool`
+                      : bountyValue <= 20
+                      ? 'Minimum floor reached ($20) — will not decrease further'
+                      : `Starts at $100 and decreases by $1/hr (min $20). Next -$1 in ${minutesUntilDecay ?? 60}m`
+                  }
+                >
+                  <span>{task.completed ? `+$${bountyValue} Claimed` : `$${bountyValue}`}</span>
+                  {!task.completed && (
+                    <span className="text-[9px] font-semibold opacity-75">
+                      {bountyValue <= 20 ? '(min)' : '(-$1/hr)'}
+                    </span>
+                  )}
+                </span>
+              )}
 
               {/* Note Icon / Indicator Badge */}
               {hasNotes && !isExpanded && (

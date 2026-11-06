@@ -103,7 +103,9 @@ export const TaskInput: React.FC = () => {
         </div>
 
         <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
-          {targetDateMode === 'today' ? 'Posting to Most Wanted' : 'Scouting leads for tomorrow'}
+          {targetDateMode === 'today'
+            ? 'Posting to Most Wanted ($100 • -$1/hr, min $20)'
+            : 'Scouting leads ($100 • decays when moved to Most Wanted)'}
         </span>
       </div>
 

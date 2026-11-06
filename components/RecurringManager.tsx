@@ -456,7 +456,7 @@ export const RecurringManager: React.FC = () => {
                         )}
                       </div>
 
-                      <div className="flex items-center gap-1.5 mt-1">
+                      <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                         <span
                           className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
                             task.frequency === 'daily'
@@ -467,6 +467,9 @@ export const RecurringManager: React.FC = () => {
                           {task.frequency === 'daily'
                             ? 'Every Day'
                             : `Every ${getDayName(task.day_of_week)}`}
+                        </span>
+                        <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60">
+                          Starts at $100 (-$1/hr)
                         </span>
                       </div>
                     </div>
