@@ -12,26 +12,24 @@ export const SyncErrorBanner: React.FC = () => {
   }
 
   return (
-    <div className="p-3.5 bg-rose-500/10 border border-rose-500/30 dark:border-rose-500/40 rounded-2xl text-rose-900 dark:text-rose-200 text-xs sm:text-sm animate-slide-up shadow-xs mb-3 flex items-start justify-between gap-2.5">
+    <div className="p-3.5 bg-[#FFFDF9] dark:bg-[#1E1C1A] border border-[#E2DDD5] dark:border-[#2E2A26] border-l-[3px] border-l-[#9E2A2B] dark:border-l-[#C94A4B] rounded-lg text-xs sm:text-sm animate-fade-in flex items-start justify-between gap-2.5">
       <div className="flex items-start gap-2.5 min-w-0">
-        <div className="p-1.5 bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-lg shrink-0 mt-0.5">
-          <AlertTriangle className="w-4 h-4" />
-        </div>
+        <AlertTriangle className="w-4 h-4 text-[#9E2A2B] dark:text-[#C94A4B] shrink-0 mt-0.5" />
         <div className="min-w-0">
-          <p className="font-bold text-rose-950 dark:text-rose-100">
-            Cloud Sync Disconnected
+          <p className="font-serif tracking-tight font-bold text-[#1F1D1A] dark:text-[#EDE8E1]">
+            Telegraph Sync Disconnected
           </p>
-          <p className="text-xs text-rose-800/90 dark:text-rose-300/90 mt-0.5 leading-relaxed">
-            {syncErrorMessage || 'Database unreachable. Running locally with offline storage.'}
+          <p className="font-mono text-xs tracking-wider text-[#70685E] dark:text-[#8C8479] mt-0.5 leading-relaxed">
+            {syncErrorMessage || 'Database unreachable. Operating on local ledger storage.'}
           </p>
           {authUser.isAuthenticated && (
             <button
               onClick={() => syncWithCloud()}
               disabled={isSyncing}
-              className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-rose-600 hover:bg-rose-700 active:scale-95 text-white font-semibold text-xs rounded-lg transition-all shadow-2xs"
+              className="mt-2 inline-flex items-center gap-1.5 bg-[#1F1D1A] dark:bg-[#EDE8E1] text-[#FFFDF9] dark:text-[#151413] hover:opacity-90 text-xs font-medium uppercase tracking-wider px-3 py-1.5 rounded-md transition-opacity"
             >
               <RefreshCw className={`w-3 h-3 ${isSyncing ? 'animate-spin' : ''}`} />
-              <span>{isSyncing ? 'Reconnecting...' : 'Retry Cloud Sync'}</span>
+              <span>{isSyncing ? 'Reconnecting...' : 'Retry Sync'}</span>
             </button>
           )}
         </div>
@@ -39,7 +37,7 @@ export const SyncErrorBanner: React.FC = () => {
 
       <button
         onClick={dismissSyncError}
-        className="p-1 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-lg transition-colors shrink-0"
+        className="p-1 text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1] rounded transition-colors shrink-0"
         aria-label="Dismiss error banner"
       >
         <X className="w-4 h-4" />

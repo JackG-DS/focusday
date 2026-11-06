@@ -3,24 +3,28 @@
 @tailwind utilities;
 
 :root {
-  --foreground-rgb: 15, 23, 42;
-  --background-start-rgb: 248, 250, 252;
-  --background-end-rgb: 241, 245, 249;
+  --bg-canvas: #F7F5F0;
+  --bg-card: #FFFDF9;
+  --text-primary: #1F1D1A;
+  --text-secondary: #70685E;
+  --border-hairline: #E2DDD5;
+  --accent-leather: #8B5E3C;
+  --accent-crimson: #9E2A2B;
 }
 
 .dark {
-  --foreground-rgb: 248, 250, 252;
-  --background-start-rgb: 9, 13, 22;
-  --background-end-rgb: 15, 23, 42;
+  --bg-canvas: #151413;
+  --bg-card: #1E1C1A;
+  --text-primary: #EDE8E1;
+  --text-secondary: #8C8479;
+  --border-hairline: #2E2A26;
+  --accent-leather: #D4A373;
+  --accent-crimson: #C94A4B;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      rgb(var(--background-start-rgb)),
-      rgb(var(--background-end-rgb))
-    );
+  color: var(--text-primary);
+  background-color: var(--bg-canvas);
   min-height: 100vh;
   min-height: -webkit-fill-available;
   -webkit-tap-highlight-color: transparent;
@@ -45,7 +49,7 @@ body {
 }
 
 @keyframes scaleUp {
-  from { opacity: 0; transform: scale(0.95); }
+  from { opacity: 0; transform: scale(0.98); }
   to { opacity: 1; transform: scale(1); }
 }
 
@@ -54,5 +58,5 @@ body {
 }
 
 .animate-scale-up {
-  animation: scaleUp 0.25s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation: scaleUp 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }

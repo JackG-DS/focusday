@@ -26,14 +26,14 @@ interface TaskItemProps {
   isDragDisabled?: boolean;
 }
 
-const COLOR_ACCENTS: Record<string, { borderLeft: string; dot: string }> = {
-  red: { borderLeft: 'border-l-4 border-l-rose-500', dot: 'bg-rose-500' },
-  orange: { borderLeft: 'border-l-4 border-l-orange-500', dot: 'bg-orange-500' },
-  amber: { borderLeft: 'border-l-4 border-l-amber-500', dot: 'bg-amber-500' },
-  emerald: { borderLeft: 'border-l-4 border-l-emerald-500', dot: 'bg-emerald-500' },
-  blue: { borderLeft: 'border-l-4 border-l-blue-500', dot: 'bg-blue-500' },
-  purple: { borderLeft: 'border-l-4 border-l-purple-500', dot: 'bg-purple-500' },
-  default: { borderLeft: '', dot: '' },
+export const COLOR_ACCENTS: Record<string, { borderLeft: string }> = {
+  red: { borderLeft: 'border-l-[3px] border-l-[#9E2A2B] dark:border-l-[#C94A4B]' },
+  orange: { borderLeft: 'border-l-[3px] border-l-[#B85D3B] dark:border-l-[#D47A55]' },
+  amber: { borderLeft: 'border-l-[3px] border-l-[#8B5E3C] dark:border-l-[#D4A373]' },
+  emerald: { borderLeft: 'border-l-[3px] border-l-[#4A6B53] dark:border-l-[#6B9075]' },
+  blue: { borderLeft: 'border-l-[3px] border-l-[#4A6278] dark:border-l-[#6C8CA8]' },
+  purple: { borderLeft: 'border-l-[3px] border-l-[#6E536E] dark:border-l-[#967596]' },
+  default: { borderLeft: '' },
 };
 
 export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false }) => {
@@ -135,43 +135,41 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
     <div
       ref={setNodeRef}
       style={style}
-      className={`group relative rounded-2xl border transition-all select-none overflow-hidden ${
+      className={`group relative rounded-lg border border-[#E2DDD5] dark:border-[#2E2A26] bg-[#FFFDF9] dark:bg-[#1E1C1A] p-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-all select-none ${
         accent.borderLeft
       } ${
         isDragging
-          ? 'z-50 opacity-90 scale-[1.02] shadow-xl bg-white dark:bg-slate-800 border-emerald-500/60 ring-2 ring-emerald-500/20'
-          : task.completed
-          ? 'bg-slate-50/80 dark:bg-slate-900/40 border-slate-200/60 dark:border-slate-800/60 text-slate-400 dark:text-slate-500'
-          : 'bg-white dark:bg-slate-800/90 border-slate-200/90 dark:border-slate-700/80 text-slate-800 dark:text-slate-100 shadow-xs hover:border-slate-300 dark:hover:border-slate-600'
+          ? 'z-50 opacity-95 ring-1 ring-[#8B5E3C] dark:ring-[#D4A373]'
+          : 'hover:border-[#70685E]/40 dark:hover:border-[#8C8479]/40'
       }`}
     >
       {/* Main Task Row */}
-      <div className="flex items-center gap-2.5 p-3.5">
-        {/* Drag Handle (Touch & Mouse friendly) */}
+      <div className="flex items-center gap-2.5">
+        {/* Drag Handle */}
         {!isDragDisabled && (
           <button
             type="button"
             aria-label="Drag to reorder task"
             {...attributes}
             {...listeners}
-            className="cursor-grab active:cursor-grabbing p-1 -ml-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors touch-none focus:outline-none shrink-0"
+            className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 text-[#70685E]/60 dark:text-[#8C8479]/60 hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1] transition-colors touch-none focus:outline-none shrink-0"
           >
-            <GripVertical className="w-4 h-4" />
+            <GripVertical className="w-3.5 h-3.5" />
           </button>
         )}
 
-        {/* Interactive Checkbox */}
+        {/* Square Brass / Ink Checkbox */}
         <button
           type="button"
           onClick={() => toggleDailyTask(task.id)}
           aria-label={task.completed ? 'Mark task as incomplete' : 'Mark task as complete'}
-          className={`w-6 h-6 rounded-lg flex items-center justify-center transition-all duration-200 shrink-0 border ${
+          className={`w-4 h-4 rounded-sm flex items-center justify-center shrink-0 transition-colors ${
             task.completed
-              ? 'bg-emerald-500 border-emerald-500 text-white shadow-xs shadow-emerald-500/30'
-              : 'border-slate-300 dark:border-slate-600 hover:border-emerald-500 dark:hover:border-emerald-400 bg-transparent'
+              ? 'border border-[#1F1D1A] dark:border-[#EDE8E1] bg-[#1F1D1A] dark:bg-[#EDE8E1] text-[#FFFDF9] dark:text-[#151413]'
+              : 'border border-[#70685E]/50 dark:border-[#8C8479]/50 hover:border-[#1F1D1A] dark:hover:border-[#EDE8E1] bg-transparent'
           }`}
         >
-          {task.completed && <Check className="w-4 h-4 stroke-[2.5]" />}
+          {task.completed && <Check className="w-3 h-3 stroke-[2.5]" />}
         </button>
 
         {/* Task Title / Inline Edit */}
@@ -184,12 +182,12 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
                 value={editTitle}
                 onChange={(e) => setEditTitle(e.target.value)}
                 onKeyDown={handleTitleKeyDown}
-                className="w-full bg-slate-100 dark:bg-slate-900 border border-emerald-500 rounded-lg px-2.5 py-1 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                className="w-full bg-[#F7F5F0] dark:bg-[#151413] border border-[#8B5E3C] dark:border-[#D4A373] rounded px-2.5 py-1 text-sm font-medium text-[#1F1D1A] dark:text-[#EDE8E1] focus:outline-none"
               />
               <button
                 type="button"
                 onClick={handleSaveTitle}
-                className="p-1 text-emerald-600 hover:text-emerald-700 dark:text-emerald-400"
+                className="p-1 text-[#8B5E3C] dark:text-[#D4A373] hover:opacity-80"
                 title="Save title"
               >
                 <CheckCheck className="w-4 h-4" />
@@ -200,79 +198,59 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
                   setEditTitle(task.title);
                   setIsEditingTitle(false);
                 }}
-                className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                className="p-1 text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1]"
                 title="Cancel"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {/* Color Dot (if color specified) */}
-              {accent.dot && (
-                <span className={`w-2 h-2 rounded-full shrink-0 ${accent.dot}`} />
-              )}
-
+            <div className="flex items-baseline gap-2 flex-wrap">
               <span
                 onClick={() => toggleDailyTask(task.id)}
-                className={`text-sm sm:text-base font-medium break-words cursor-pointer transition-all ${
-                  task.completed ? 'line-through opacity-70' : ''
+                className={`font-medium text-sm sm:text-base break-words cursor-pointer transition-all ${
+                  task.completed
+                    ? 'opacity-50 text-[#70685E] dark:text-[#8C8479] line-through'
+                    : 'text-[#1F1D1A] dark:text-[#EDE8E1]'
                 }`}
               >
                 {task.title}
               </span>
 
-              {/* Bounty Value Badge */}
-              {isBonus ? (
-                <span
-                  className={`inline-flex items-center gap-1 text-[11px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${
-                    task.completed
-                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
-                      : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800/70'
-                  }`}
-                  title={
-                    task.completed
+              {/* Bounty Value Ledger Entry */}
+              <span
+                className="font-mono text-xs tracking-wider font-semibold text-[#8B5E3C] dark:text-[#D4A373] shrink-0"
+                title={
+                  isBonus
+                    ? task.completed
                       ? 'Bounty reward claimed: +$10 added to weekly pool'
-                      : 'Bonus Bounty task: Fixed $10 value (does not decrease)'
-                  }
-                >
-                  <span>{task.completed ? `+$${bountyValue} Claimed` : `$${bountyValue} BOUNTY`}</span>
-                </span>
-              ) : (
-                <span
-                  className={`inline-flex items-center gap-1 text-[11px] font-extrabold px-2 py-0.5 rounded-full border shrink-0 ${
-                    task.completed
-                      ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-500/30'
-                      : bountyValue <= 20
-                      ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-300 dark:border-slate-700'
-                      : 'bg-amber-50 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border-amber-300/70 dark:border-amber-800/70'
-                  }`}
-                  title={
-                    task.completed
-                      ? `Most Wanted reward claimed: +$${bountyValue} added to weekly pool`
-                      : bountyValue <= 20
-                      ? 'Minimum floor reached ($20) — will not decrease further'
-                      : `Starts at $100 and decreases by $1/hr (min $20). Next -$1 in ${minutesUntilDecay ?? 60}m`
-                  }
-                >
-                  <span>{task.completed ? `+$${bountyValue} Claimed` : `$${bountyValue}`}</span>
-                  {!task.completed && (
-                    <span className="text-[9px] font-semibold opacity-75">
-                      {bountyValue <= 20 ? '(min)' : '(-$1/hr)'}
-                    </span>
-                  )}
+                      : 'Bonus Bounty contract: Fixed $10 value (no decay)'
+                    : task.completed
+                    ? `Most Wanted reward claimed: +$${bountyValue} added to weekly pool`
+                    : bountyValue <= 20
+                    ? 'Minimum floor reached ($20)'
+                    : `Decreases by $1/hr (min $20). Next -$1 in ${minutesUntilDecay ?? 60}m`
+                }
+              >
+                ${bountyValue}
+              </span>
+
+              {/* Completed Status Tag */}
+              {task.completed && (
+                <span className="font-mono text-[10px] tracking-widest uppercase font-bold text-[#9E2A2B] dark:text-[#C94A4B] shrink-0">
+                  [CLAIMED]
                 </span>
               )}
 
-              {/* Note Icon / Indicator Badge */}
+              {/* Note Indicator */}
               {hasNotes && !isExpanded && (
                 <button
                   type="button"
                   onClick={() => setIsExpanded(true)}
-                  className="inline-flex items-center gap-0.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                  className="inline-flex items-center gap-1 font-mono text-[10px] tracking-wider uppercase px-1.5 py-0.5 rounded border border-[#E2DDD5] dark:border-[#2E2A26] bg-[#F7F5F0] dark:bg-[#151413] text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1] transition-colors"
                   title="View notes"
                 >
-                  <FileText className="w-3 h-3 text-emerald-500" />
+                  <FileText className="w-2.5 h-2.5" />
                   <span>Notes</span>
                 </button>
               )}
@@ -283,41 +261,38 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
         {/* Action Buttons: Expand Chevron, Edit & Delete */}
         {!isEditingTitle && (
           <div className="flex items-center gap-0.5 shrink-0">
-            {/* Expand / Collapse Chevron Toggle */}
             <button
               type="button"
               onClick={() => setIsExpanded(!isExpanded)}
               aria-label={isExpanded ? 'Collapse notes' : 'Expand notes'}
               title={isExpanded ? 'Collapse details' : 'Expand details & notes'}
-              className={`p-1.5 rounded-lg text-xs font-semibold flex items-center transition-colors ${
+              className={`p-1 rounded text-xs flex items-center transition-colors ${
                 isExpanded || hasNotes
-                  ? 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700/60'
-                  : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700/60 opacity-90 sm:opacity-0 group-hover:opacity-100'
+                  ? 'text-[#1F1D1A] dark:text-[#EDE8E1]'
+                  : 'text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1] opacity-90 sm:opacity-0 group-hover:opacity-100'
               }`}
             >
               {isExpanded ? (
-                <ChevronUp className="w-4 h-4 text-emerald-500" />
+                <ChevronUp className="w-3.5 h-3.5" />
               ) : (
-                <ChevronDown className={`w-4 h-4 ${hasNotes ? 'text-emerald-500' : ''}`} />
+                <ChevronDown className="w-3.5 h-3.5" />
               )}
             </button>
 
-            {/* Edit Title Button */}
             <button
               type="button"
               onClick={() => setIsEditingTitle(true)}
               aria-label="Edit task title"
-              className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700/60 transition-colors opacity-90 sm:opacity-0 group-hover:opacity-100"
+              className="p-1 text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1] rounded transition-colors opacity-90 sm:opacity-0 group-hover:opacity-100"
             >
               <Edit3 className="w-3.5 h-3.5" />
             </button>
 
-            {/* Delete Button */}
             <button
               type="button"
               onClick={() => deleteDailyTask(task.id)}
               aria-label="Delete task"
-              className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors opacity-90 sm:opacity-0 group-hover:opacity-100"
+              className="p-1 text-[#70685E] dark:text-[#8C8479] hover:text-[#9E2A2B] dark:hover:text-[#C94A4B] rounded transition-colors opacity-90 sm:opacity-0 group-hover:opacity-100"
             >
               <Trash2 className="w-3.5 h-3.5" />
             </button>
@@ -327,14 +302,14 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
 
       {/* Expandable Notes Drawer / Accordion */}
       {isExpanded && (
-        <div className="px-4 pb-3.5 pt-1 border-t border-slate-100 dark:border-slate-700/50 animate-slide-up space-y-2.5">
+        <div className="mt-3 pt-2.5 border-t border-[#E2DDD5] dark:border-[#2E2A26] animate-fade-in space-y-2.5">
           {isEditingNotes ? (
             <div className="space-y-2.5">
               {/* Color Selector in Edit Mode */}
-              <div className="flex items-center justify-between pt-1">
-                <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                  <Palette className="w-3 h-3 text-slate-400" />
-                  <span>Color:</span>
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-xs tracking-wider uppercase text-[#70685E] dark:text-[#8C8479] flex items-center gap-1">
+                  <Palette className="w-3 h-3" />
+                  <span>Category Border:</span>
                 </span>
                 <div className="flex items-center gap-1.5">
                   {TASK_COLOR_PALETTE.map((p) => (
@@ -343,9 +318,9 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
                       type="button"
                       onClick={() => setSelectedColor(p.id)}
                       title={p.name}
-                      className={`w-4 h-4 rounded-full transition-transform ${p.bgClass} ${
+                      className={`w-3.5 h-3.5 rounded-sm transition-transform ${p.bgClass} ${
                         selectedColor === p.id
-                          ? 'ring-2 ring-emerald-500 ring-offset-2 scale-110'
+                          ? 'ring-1 ring-[#1F1D1A] dark:ring-[#EDE8E1] ring-offset-1 ring-offset-[#FFFDF9] dark:ring-offset-[#1E1C1A] scale-110'
                           : 'opacity-70 hover:opacity-100'
                       }`}
                     />
@@ -355,24 +330,20 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
 
               {/* Notes Textarea */}
               <div className="space-y-1">
-                <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400">
-                  <span className="flex items-center gap-1">
-                    <FileText className="w-3 h-3 text-emerald-500" />
-                    <span>Editing Notes</span>
-                  </span>
-                  <span className="text-[10px] text-slate-400">Markdown / Lists supported</span>
+                <div className="flex items-center justify-between font-mono text-[11px] tracking-wider uppercase text-[#70685E] dark:text-[#8C8479]">
+                  <span>Ledger Notes / Checklist</span>
                 </div>
                 <textarea
                   ref={notesTextareaRef}
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}
                   rows={3}
-                  placeholder="Add sub-items, checklist items, links, or notes..."
-                  className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-900 border border-emerald-500/70 rounded-xl p-2.5 text-slate-800 dark:text-slate-200 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-emerald-500 leading-relaxed resize-y"
+                  placeholder="Add ledger notes, sub-items, or coordinates..."
+                  className="w-full bg-[#F2EFE9]/40 dark:bg-[#181615]/50 p-2.5 rounded text-xs font-mono border border-[#E2DDD5] dark:border-[#2E2A26] text-[#1F1D1A] dark:text-[#EDE8E1] placeholder-[#70685E]/60 dark:placeholder-[#8C8479]/60 focus:outline-none focus:border-[#8B5E3C] dark:focus:border-[#D4A373] leading-relaxed resize-y"
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-1.5">
+              <div className="flex items-center justify-end gap-2">
                 <button
                   type="button"
                   onClick={() => {
@@ -380,14 +351,14 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
                     setSelectedColor((task.color as TaskColor) || 'default');
                     setIsEditingNotes(false);
                   }}
-                  className="px-2.5 py-1 text-xs font-semibold rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+                  className="px-2.5 py-1 font-mono text-xs uppercase tracking-wider rounded border border-[#E2DDD5] dark:border-[#2E2A26] text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1] transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handleSaveNotes}
-                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs transition-all flex items-center gap-1"
+                  className="bg-[#1F1D1A] dark:bg-[#EDE8E1] text-[#FFFDF9] dark:text-[#151413] hover:opacity-90 text-xs font-medium uppercase tracking-wider px-3 py-1 rounded-md transition-all flex items-center gap-1"
                 >
                   <Save className="w-3 h-3" />
                   <span>Save</span>
@@ -395,19 +366,19 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
               </div>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div>
               {hasNotes ? (
                 <div
                   onClick={() => setIsEditingNotes(true)}
-                  className="cursor-pointer group/notes rounded-xl bg-slate-50/80 dark:bg-slate-900/60 p-3 border border-slate-200/60 dark:border-slate-700/60 hover:border-emerald-500/40 transition-all"
+                  className="cursor-pointer bg-[#F2EFE9]/40 dark:bg-[#181615]/50 p-2.5 rounded text-xs font-mono text-[#1F1D1A] dark:text-[#EDE8E1] border border-transparent hover:border-[#E2DDD5] dark:hover:border-[#2E2A26] transition-all"
                   title="Click to edit notes"
                 >
-                  <div className="whitespace-pre-wrap text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+                  <div className="whitespace-pre-wrap leading-relaxed">
                     {task.notes}
                   </div>
-                  <div className="mt-2 pt-1 border-t border-slate-200/40 dark:border-slate-700/40 flex items-center justify-between text-[11px] text-slate-400">
-                    <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-medium">
-                      <Edit3 className="w-3 h-3" /> Click to edit notes or color
+                  <div className="mt-2 pt-1.5 border-t border-[#E2DDD5]/60 dark:border-[#2E2A26]/60 flex items-center justify-between text-[10px] uppercase tracking-wider text-[#70685E] dark:text-[#8C8479]">
+                    <span className="flex items-center gap-1">
+                      <Edit3 className="w-2.5 h-2.5" /> Edit notes or border color
                     </span>
                   </div>
                 </div>
@@ -415,10 +386,10 @@ export const TaskItem: React.FC<TaskItemProps> = ({ task, isDragDisabled = false
                 <button
                   type="button"
                   onClick={() => setIsEditingNotes(true)}
-                  className="w-full py-2.5 px-3 rounded-xl border border-dashed border-slate-300 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/30 text-xs font-semibold text-slate-500 hover:text-emerald-600 hover:border-emerald-500 transition-all flex items-center justify-center gap-1.5"
+                  className="w-full bg-[#F2EFE9]/40 dark:bg-[#181615]/50 p-2.5 rounded text-xs font-mono tracking-wider text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1] border border-[#E2DDD5] dark:border-[#2E2A26] transition-colors flex items-center justify-center gap-1.5"
                 >
-                  <Plus className="w-3.5 h-3.5" />
-                  <span>Add details, list items, or change color</span>
+                  <Plus className="w-3 h-3" />
+                  <span>Add notes, checklist items, or category color</span>
                 </button>
               )}
             </div>

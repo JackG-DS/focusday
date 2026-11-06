@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Download, Share, X, Smartphone, PlusSquare } from 'lucide-react';
+import { Download, Share, X, PlusSquare } from 'lucide-react';
 
 interface BeforeInstallPromptEvent extends Event {
   prompt: () => Promise<void>;
@@ -16,14 +16,12 @@ export const PWAInstallBanner: React.FC = () => {
   const [showIOSGuide, setShowIOSGuide] = useState(false);
 
   useEffect(() => {
-    // Check if already in standalone mode
     const isInStandalone =
       window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as unknown as { standalone?: boolean }).standalone === true;
 
     setIsStandalone(isInStandalone);
 
-    // Detect iOS
     const userAgent = window.navigator.userAgent.toLowerCase();
     const isIOSDevice = /iphone|ipad|ipod/.test(userAgent);
     setIsIOS(isIOSDevice);
@@ -44,7 +42,6 @@ export const PWAInstallBanner: React.FC = () => {
     return null;
   }
 
-  // Native Android/Chrome install
   const handleInstallClick = async () => {
     if (deferredPrompt) {
       deferredPrompt.prompt();
@@ -64,30 +61,27 @@ export const PWAInstallBanner: React.FC = () => {
 
   return (
     <>
-      <div className="p-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-2xl shadow-md flex items-center justify-between gap-2 text-xs sm:text-sm animate-slide-up mb-3">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 bg-white/20 rounded-xl">
-            <Smartphone className="w-4 h-4" />
-          </div>
-          <div>
-            <p className="font-bold">Install BountyList App</p>
-            <p className="text-[11px] text-emerald-100">
-              Pin to your home screen for offline bounty hunting &amp; full screen
-            </p>
-          </div>
+      <div className="p-3.5 bg-[#FFFDF9] dark:bg-[#1E1C1A] border border-[#E2DDD5] dark:border-[#2E2A26] rounded-lg shadow-[0_1px_3px_rgba(0,0,0,0.02)] flex items-center justify-between gap-2 animate-fade-in">
+        <div>
+          <p className="font-serif tracking-tight font-bold text-sm text-[#1F1D1A] dark:text-[#EDE8E1]">
+            Install BountyList Edition
+          </p>
+          <p className="font-mono text-xs tracking-wider text-[#70685E] dark:text-[#8C8479] mt-0.5">
+            Add to your home screen for offline ledger access
+          </p>
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0">
           <button
             onClick={handleInstallClick}
-            className="px-3 py-1.5 bg-white text-emerald-800 font-bold rounded-xl shadow-xs text-xs hover:bg-emerald-50 transition-colors flex items-center gap-1"
+            className="bg-[#1F1D1A] dark:bg-[#EDE8E1] text-[#FFFDF9] dark:text-[#151413] hover:opacity-90 text-xs font-medium uppercase tracking-wider px-3 py-1.5 rounded-md flex items-center gap-1"
           >
-            <Download className="w-3.5 h-3.5" />
+            <Download className="w-3 h-3" />
             <span>Install</span>
           </button>
           <button
             onClick={() => setIsDismissed(true)}
-            className="p-1.5 text-emerald-100 hover:text-white rounded-lg transition-colors"
+            className="p-1.5 text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1] rounded transition-colors"
             aria-label="Dismiss banner"
           >
             <X className="w-4 h-4" />
@@ -97,40 +91,29 @@ export const PWAInstallBanner: React.FC = () => {
 
       {/* iOS Installation Instructions Modal */}
       {showIOSGuide && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm">
-          <div className="w-full max-w-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-5 shadow-2xl space-y-4 text-center">
-            <div className="w-12 h-12 mx-auto rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-              <Share className="w-6 h-6" />
-            </div>
-
-            <h3 className="font-bold text-base text-slate-900 dark:text-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#151413]/70 backdrop-blur-xs">
+          <div className="w-full max-w-xs bg-[#FFFDF9] dark:bg-[#1E1C1A] border border-[#E2DDD5] dark:border-[#2E2A26] rounded-lg p-5 shadow-lg space-y-4 text-center">
+            <h3 className="font-serif tracking-tight font-bold text-base text-[#1F1D1A] dark:text-[#EDE8E1]">
               Install on iOS (Safari)
             </h3>
 
-            <div className="text-left space-y-2.5 text-xs text-slate-600 dark:text-slate-300">
-              <div className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 font-bold flex items-center justify-center shrink-0">
-                  1
-                </span>
-                <span>
-                  Tap the <strong>Share</strong> button <Share className="w-3.5 h-3.5 inline mx-1" /> in Safari’s toolbar.
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="w-5 h-5 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-400 font-bold flex items-center justify-center shrink-0">
-                  2
-                </span>
-                <span>
-                  Scroll down and tap <strong>Add to Home Screen</strong> <PlusSquare className="w-3.5 h-3.5 inline mx-1" />.
-                </span>
-              </div>
+            <div className="text-left space-y-2.5 text-xs text-[#70685E] dark:text-[#8C8479]">
+              <p>
+                1. Tap the <strong className="text-[#1F1D1A] dark:text-[#EDE8E1]">Share</strong> button{' '}
+                <Share className="w-3.5 h-3.5 inline mx-0.5" /> in Safari&apos;s toolbar.
+              </p>
+              <p>
+                2. Scroll down and select{' '}
+                <strong className="text-[#1F1D1A] dark:text-[#EDE8E1]">Add to Home Screen</strong>{' '}
+                <PlusSquare className="w-3.5 h-3.5 inline mx-0.5" />.
+              </p>
             </div>
 
             <button
               onClick={() => setShowIOSGuide(false)}
-              className="w-full py-2.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 font-bold text-xs rounded-xl transition-all"
+              className="w-full bg-[#1F1D1A] dark:bg-[#EDE8E1] text-[#FFFDF9] dark:text-[#151413] hover:opacity-90 text-xs font-medium uppercase tracking-wider px-3.5 py-2 rounded-md transition-opacity"
             >
-              Got it!
+              Understood
             </button>
           </div>
         </div>

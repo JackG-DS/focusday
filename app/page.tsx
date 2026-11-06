@@ -2,7 +2,7 @@
 
 import React, { useEffect } from 'react';
 import { Header } from '@/components/Header';
-import { DailyTaskList } from '@/components/DailyTaskList';
+import { DailyTaskList, WeeklyBountyLedgerCard } from '@/components/DailyTaskList';
 import { TaskInput } from '@/components/TaskInput';
 import { PoolManager } from '@/components/PoolManager';
 import { RecurringManager } from '@/components/RecurringManager';
@@ -36,12 +36,12 @@ export default function Home() {
   }, [settings.theme]);
 
   return (
-    <main className="min-h-screen flex flex-col justify-between text-slate-900 dark:text-slate-100 pb-24">
+    <main className="min-h-screen flex flex-col justify-between bg-[#F7F5F0] dark:bg-[#151413] text-[#1F1D1A] dark:text-[#EDE8E1] pb-24 transition-colors">
       {/* Sticky Header */}
       <Header />
 
       {/* Main Container */}
-      <div className="flex-1 max-w-2xl w-full mx-auto px-4 py-4 space-y-4">
+      <div className="flex-1 w-full max-w-xl mx-auto px-4 py-8 space-y-6">
         {/* Cloud Sync Offline/Error Fallback Banner */}
         <SyncErrorBanner />
 
@@ -50,10 +50,11 @@ export default function Home() {
 
         {/* Tab 1: Today's Focus */}
         {activeTab === 'today' && (
-          <div className="space-y-4 animate-fade-in">
+          <div className="space-y-6 animate-fade-in">
             <TaskInput />
             <DailyTaskList />
             <TomorrowPreview />
+            <WeeklyBountyLedgerCard />
           </div>
         )}
 

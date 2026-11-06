@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Gift, Sparkles, CheckCircle2, ArrowRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 import { useTaskContext } from '@/context/TaskContext';
 
 export const BonusCelebrationModal: React.FC = () => {
@@ -15,46 +15,33 @@ export const BonusCelebrationModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
-      <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 border border-emerald-500/40 rounded-3xl p-6 shadow-2xl text-center space-y-4 animate-scale-up">
-        {/* Decorative Badge */}
-        <div className="w-16 h-16 mx-auto rounded-3xl bg-gradient-to-tr from-emerald-500 to-teal-400 text-white flex items-center justify-center shadow-lg shadow-emerald-500/30">
-          <Gift className="w-8 h-8 animate-bounce-short" />
-        </div>
-
-        {/* Text Details */}
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#151413]/70 backdrop-blur-xs animate-fade-in">
+      <div className="relative w-full max-w-sm bg-[#FFFDF9] dark:bg-[#1E1C1A] border border-[#E2DDD5] dark:border-[#2E2A26] rounded-lg p-6 shadow-lg text-center space-y-4 animate-scale-up">
         <div className="space-y-1.5">
-          <div className="inline-flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950/80 px-2.5 py-0.5 rounded-full">
-            <Sparkles className="w-3.5 h-3.5" /> New Bounty Posted
+          <div className="font-mono text-[10px] tracking-widest uppercase font-bold text-[#8B5E3C] dark:text-[#D4A373]">
+            SPECIAL DISPATCH UNLOCKED
           </div>
-          <h2 className="text-xl font-extrabold text-slate-900 dark:text-white">
-            Most Wanted Cleared!
+          <h2 className="font-serif tracking-tight font-bold text-xl text-[#1F1D1A] dark:text-[#EDE8E1]">
+            Most Wanted Board Cleared
           </h2>
-          <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300">
-            You rounded up every outlaw on your Most Wanted board! Here is your newly unlocked Bounty contract:
+          <p className="text-xs sm:text-sm text-[#70685E] dark:text-[#8C8479]">
+            All primary targets have been resolved. A supplemental Bounty contract has been posted to your board:
           </p>
         </div>
 
         {/* Unlocked Task Highlight Card */}
-        <div className="p-4 rounded-2xl bg-gradient-to-br from-emerald-500/10 via-teal-500/10 to-indigo-500/10 border border-emerald-500/30 text-left">
-          <div className="flex items-start gap-2.5">
-            <div className="p-1.5 rounded-lg bg-emerald-500 text-white shrink-0 mt-0.5">
-              <CheckCircle2 className="w-4 h-4" />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-xs text-emerald-700 dark:text-emerald-300 font-semibold uppercase tracking-wider">
-                  Wanted: Special Bounty
-                </p>
-                <span className="text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-emerald-500 text-white shadow-2xs">
-                  $10 Reward
-                </span>
-              </div>
-              <p className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
-                {celebrationModalTask.title}
-              </p>
-            </div>
+        <div className="p-3.5 rounded-lg bg-[#F2EFE9]/40 dark:bg-[#181615]/50 border border-[#E2DDD5] dark:border-[#2E2A26] text-left">
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono text-[10px] tracking-widest uppercase text-[#70685E] dark:text-[#8C8479]">
+              STANDING BOUNTY
+            </span>
+            <span className="font-mono text-xs tracking-wider font-semibold text-[#8B5E3C] dark:text-[#D4A373]">
+              $10
+            </span>
           </div>
+          <p className="font-medium text-sm sm:text-base text-[#1F1D1A] dark:text-[#EDE8E1] mt-1">
+            {celebrationModalTask.title}
+          </p>
         </div>
 
         {/* Action Buttons */}
@@ -62,18 +49,18 @@ export const BonusCelebrationModal: React.FC = () => {
           <button
             type="button"
             onClick={handleGoToTask}
-            className="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 active:scale-98 text-white font-bold text-sm rounded-2xl shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center gap-2"
+            className="w-full bg-[#1F1D1A] dark:bg-[#EDE8E1] text-[#FFFDF9] dark:text-[#151413] hover:opacity-90 text-xs font-medium uppercase tracking-wider px-3.5 py-2.5 rounded-md transition-opacity flex items-center justify-center gap-2"
           >
-            <span>Claim This Bounty!</span>
-            <ArrowRight className="w-4 h-4" />
+            <span>Inspect Notice</span>
+            <ArrowRight className="w-3.5 h-3.5" />
           </button>
 
           <button
             type="button"
             onClick={dismissCelebrationModal}
-            className="w-full py-2 text-xs font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
+            className="w-full py-1.5 font-mono text-xs tracking-wider uppercase text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1] transition-colors"
           >
-            Leave it on the board for later
+            Dismiss
           </button>
         </div>
       </div>

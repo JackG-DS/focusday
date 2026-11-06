@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { Sparkles, Flame, RefreshCw, Moon, Sun, Laptop, User, Coins } from 'lucide-react';
+import { RefreshCw, Moon, Sun, Laptop, User } from 'lucide-react';
 import { useTaskContext } from '@/context/TaskContext';
 import { formatReadableDate } from '@/lib/storage';
 
@@ -31,91 +31,76 @@ export const Header: React.FC = () => {
   };
 
   const getThemeIcon = () => {
-    if (settings.theme === 'light') return <Sun className="w-4 h-4 text-amber-500" />;
-    if (settings.theme === 'dark') return <Moon className="w-4 h-4 text-indigo-400" />;
-    return <Laptop className="w-4 h-4 text-slate-400" />;
+    if (settings.theme === 'light') return <Sun className="w-3.5 h-3.5 text-[#8B5E3C]" />;
+    if (settings.theme === 'dark') return <Moon className="w-3.5 h-3.5 text-[#D4A373]" />;
+    return <Laptop className="w-3.5 h-3.5 text-[#70685E] dark:text-[#8C8479]" />;
   };
 
   return (
-    <header className="sticky top-0 z-30 bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 transition-colors">
-      <div className="max-w-2xl mx-auto px-4 pt-3 pb-2">
-        {/* Top row */}
+    <header className="sticky top-0 z-30 bg-[#F7F5F0]/95 dark:bg-[#151413]/95 backdrop-blur-sm border-b border-[#E2DDD5] dark:border-[#2E2A26] transition-colors">
+      <div className="max-w-xl mx-auto px-4 py-3.5">
+        {/* Top Masthead Row */}
         <div className="flex items-center justify-between gap-2">
-          {/* Logo & App Name */}
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 flex items-center justify-center shadow-sm shadow-emerald-500/20 text-white font-bold text-lg">
-              <Sparkles className="w-5 h-5 text-white animate-pulse-subtle" />
+          {/* Masthead Title & Date */}
+          <div className="min-w-0">
+            <div className="flex items-baseline gap-2.5">
+              <h1 className="font-serif tracking-tight font-bold text-lg sm:text-xl text-[#1F1D1A] dark:text-[#EDE8E1] leading-none">
+                BountyList
+              </h1>
+              <span className="font-mono text-[10px] uppercase tracking-widest text-[#70685E] dark:text-[#8C8479] border-l border-[#E2DDD5] dark:border-[#2E2A26] pl-2">
+                LEDGER
+              </span>
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-base font-bold tracking-tight text-slate-900 dark:text-white leading-tight">
-                  BountyList
-                </h1>
-                <span className="text-[10px] uppercase tracking-wider font-extrabold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-400 border border-amber-300/60 dark:border-amber-800/60 px-1.5 py-0.5 rounded-md">
-                  WANTED
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {formatReadableDate(settings.lastActiveDate)}
-              </p>
-            </div>
+            <p className="font-mono text-xs tracking-wider text-[#70685E] dark:text-[#8C8479] mt-1 uppercase">
+              {formatReadableDate(settings.lastActiveDate)} &middot; STREAK {streakCount}D
+            </p>
           </div>
 
-          {/* Quick Actions & Status */}
-          <div className="flex items-center gap-1.5">
+          {/* Right Controls & Running Total Ledger Badge */}
+          <div className="flex items-center gap-1.5 shrink-0">
             {/* User Profile Pill if Authenticated */}
             {authUser.isAuthenticated && (
               <button
                 onClick={() => setActiveTab('settings')}
-                className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/40 text-emerald-700 dark:text-emerald-300 text-xs font-semibold shadow-2xs max-w-[130px] truncate"
+                className="hidden sm:flex items-center gap-1.5 px-2 py-1 rounded-md bg-[#FFFDF9] dark:bg-[#1E1C1A] border border-[#E2DDD5] dark:border-[#2E2A26] text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1] font-mono text-xs tracking-wider max-w-[120px] truncate transition-colors"
                 title={`Signed in as ${authUser.email}`}
               >
-                <User className="w-3.5 h-3.5 shrink-0" />
+                <User className="w-3 h-3 shrink-0" />
                 <span className="truncate">{authUser.email?.split('@')[0]}</span>
               </button>
             )}
 
-            {/* Weekly Bounty Pool Pill */}
+            {/* Running Total Ledger Badge */}
             <button
               type="button"
               onClick={() => setActiveTab('history')}
-              className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300/70 dark:border-emerald-800/60 text-emerald-700 dark:text-emerald-300 text-xs font-extrabold shadow-2xs hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
-              title={`Weekly Bounty Pool (${currentWeekRangeLabel}): $${currentWeekBountyPool} — Resets End of Day Sunday`}
+              className="font-mono text-xs font-semibold px-2.5 py-1 rounded-md border border-[#E2DDD5] dark:border-[#2E2A26] bg-[#FFFDF9] dark:bg-[#1E1C1A] text-[#8B5E3C] dark:text-[#D4A373] tracking-wider hover:border-[#8B5E3C]/50 dark:hover:border-[#D4A373]/50 transition-colors"
+              title={`Weekly Bounty Pool (${currentWeekRangeLabel}): $${currentWeekBountyPool.toLocaleString()} — Resets End of Day Sunday`}
             >
-              <Coins className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>${currentWeekBountyPool}</span>
+              BOUNTY: ${currentWeekBountyPool.toLocaleString()}
             </button>
-
-            {/* Streak Counter */}
-            <div 
-              className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-800/40 text-amber-700 dark:text-amber-300 text-xs font-semibold shadow-xs"
-              title={`${streakCount} day bounty hunting streak!`}
-            >
-              <Flame className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-              <span>{streakCount}d</span>
-            </div>
 
             {/* Discreet Manual Refresh/Sync Button */}
             <button
               onClick={() => refreshTasks()}
               disabled={isSyncing}
-              className={`p-1.5 rounded-lg text-xs font-medium transition-all border flex items-center justify-center active:scale-95 ${
+              className={`p-1.5 rounded-md font-mono text-xs transition-colors border flex items-center justify-center ${
                 isSyncing
-                  ? 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/50 cursor-wait'
+                  ? 'bg-[#FFFDF9] dark:bg-[#1E1C1A] text-[#8B5E3C] dark:text-[#D4A373] border-[#E2DDD5] dark:border-[#2E2A26] cursor-wait'
                   : syncStatus === 'error'
-                  ? 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border-red-200 dark:border-red-900/50'
-                  : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700'
+                  ? 'bg-[#FFFDF9] dark:bg-[#1E1C1A] text-[#9E2A2B] dark:text-[#C94A4B] border-[#9E2A2B]/40 dark:border-[#C94A4B]/40'
+                  : 'bg-[#FFFDF9] dark:bg-[#1E1C1A] text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1] border-[#E2DDD5] dark:border-[#2E2A26]'
               }`}
               title={isSyncing ? 'Checking the telegraph...' : 'Refresh board from cloud'}
               aria-label="Refresh board"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-blue-600 dark:text-blue-400' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
             </button>
 
             {/* Theme Toggle */}
             <button
               onClick={toggleTheme}
-              className="p-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-colors"
+              className="p-1.5 rounded-md bg-[#FFFDF9] dark:bg-[#1E1C1A] text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1] border border-[#E2DDD5] dark:border-[#2E2A26] transition-colors"
               title={`Current theme: ${settings.theme}. Click to change.`}
             >
               {getThemeIcon()}
@@ -123,20 +108,20 @@ export const Header: React.FC = () => {
           </div>
         </div>
 
-        {/* Progress Bar Row */}
+        {/* Hairline Progress Bar Row */}
         {totalCount > 0 && (
-          <div className="mt-2.5">
-            <div className="flex items-center justify-between text-xs mb-1 font-medium text-slate-600 dark:text-slate-400">
-              <span>
-                Most Wanted Captured: <strong className="text-slate-900 dark:text-white">{completedCount}/{totalCount}</strong>
+          <div className="mt-3 pt-2.5 border-t border-[#E2DDD5] dark:border-[#2E2A26]">
+            <div className="flex items-center justify-between font-mono text-xs tracking-wider mb-1.5 text-[#70685E] dark:text-[#8C8479]">
+              <span className="uppercase">
+                Resolved: <strong className="text-[#1F1D1A] dark:text-[#EDE8E1]">{completedCount}/{totalCount}</strong>
               </span>
-              <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+              <span className="text-[#8B5E3C] dark:text-[#D4A373] font-semibold">
                 {todaysCompletionPercentage}%
               </span>
             </div>
-            <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
+            <div className="w-full h-1 bg-[#E2DDD5] dark:bg-[#2E2A26] rounded-none overflow-hidden">
               <div
-                className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 transition-all duration-500 ease-out"
+                className="h-full bg-[#8B5E3C] dark:bg-[#D4A373] transition-all duration-500 ease-out"
                 style={{ width: `${todaysCompletionPercentage}%` }}
               />
             </div>

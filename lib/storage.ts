@@ -61,19 +61,23 @@ export function calculateTaskBountyValue(
     return task.bounty_earned;
   }
 
-  // Tasks in Tomorrow's Leads stay at $100 until they move to Today's Most Wanted
+  const baseBounty =
+    typeof task.bounty_amount === 'number' && task.bounty_amount > 0 ? task.bounty_amount : 100;
+  const minFloor = baseBounty >= 20 ? 20 : Math.max(1, baseBounty);
+
+  // Tasks in Tomorrow's Leads stay at baseBounty until they move to Today's Most Wanted
   if (task.date_assigned > todayStr) {
-    return 100;
+    return baseBounty;
   }
 
   const startIso = task.bounty_started_at || task.created_at;
   const startMs = startIso ? new Date(startIso).getTime() : nowMs;
   if (Number.isNaN(startMs) || nowMs <= startMs) {
-    return 100;
+    return baseBounty;
   }
 
   const hoursElapsed = Math.floor((nowMs - startMs) / (1000 * 60 * 60));
-  return Math.max(20, 100 - hoursElapsed);
+  return Math.max(minFloor, baseBounty - hoursElapsed);
 }
 
 export function getMinutesUntilNextDecay(
@@ -85,8 +89,11 @@ export function getMinutesUntilNextDecay(
   if (task.completed || isTaskBonusBounty(task, poolTitlesSet) || task.date_assigned > todayStr) {
     return null;
   }
+  const baseBounty =
+    typeof task.bounty_amount === 'number' && task.bounty_amount > 0 ? task.bounty_amount : 100;
+  const minFloor = baseBounty >= 20 ? 20 : Math.max(1, baseBounty);
   const currentVal = calculateTaskBountyValue(task, todayStr, nowMs, poolTitlesSet);
-  if (currentVal <= 20) return null;
+  if (currentVal <= minFloor) return null;
 
   const startIso = task.bounty_started_at || task.created_at;
   const startMs = startIso ? new Date(startIso).getTime() : nowMs;
@@ -146,7 +153,7 @@ export const INITIAL_DAILY_TASKS = (userId: string, today: string): DailyTask[] 
   {
     id: generateUUID(),
     user_id: userId,
-    title: 'Track down today’s #1 Most Wanted target 🎯',
+    title: 'Track down today’s primary ledger objective',
     completed: false,
     order_index: 0,
     date_assigned: today,
@@ -155,7 +162,7 @@ export const INITIAL_DAILY_TASKS = (userId: string, today: string): DailyTask[] 
   {
     id: generateUUID(),
     user_id: userId,
-    title: 'Complete 30-minute deep focus showdown ⚡',
+    title: 'Complete 30-minute deep focus dispatch',
     completed: false,
     order_index: 1,
     date_assigned: today,
@@ -164,7 +171,7 @@ export const INITIAL_DAILY_TASKS = (userId: string, today: string): DailyTask[] 
   {
     id: generateUUID(),
     user_id: userId,
-    title: 'Water the horses & 10 min afternoon stretch 💧',
+    title: 'Review afternoon correspondence & telegraph notes',
     completed: false,
     order_index: 2,
     date_assigned: today,
@@ -176,25 +183,25 @@ export const INITIAL_POOL_TASKS = (userId: string): PoolTask[] => [
   {
     id: generateUUID(),
     user_id: userId,
-    title: '💰 Bounty: Read 15 pages of a frontier classic',
+    title: 'Read 15 pages of a frontier classic',
     created_at: new Date().toISOString(),
   },
   {
     id: generateUUID(),
     user_id: userId,
-    title: '💰 Bounty: Tidy up the Sheriff’s desk & workspace',
+    title: 'Tidy up the Sheriff’s desk & ledger files',
     created_at: new Date().toISOString(),
   },
   {
     id: generateUUID(),
     user_id: userId,
-    title: '💰 Bounty: Listen to an insightful podcast episode',
+    title: 'Listen to an insightful dispatch or audio briefing',
     created_at: new Date().toISOString(),
   },
   {
     id: generateUUID(),
     user_id: userId,
-    title: '💰 Bounty: Cook up a hearty camp-style dinner',
+    title: 'Prepare a hearty camp-style dinner',
     created_at: new Date().toISOString(),
   },
 ];

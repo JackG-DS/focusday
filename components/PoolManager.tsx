@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Gift, Plus, Trash2, ArrowUpRight, Sparkles } from 'lucide-react';
+import { Trash2, ArrowUpRight } from 'lucide-react';
 import { useTaskContext } from '@/context/TaskContext';
 
 export const PoolManager: React.FC = () => {
@@ -30,109 +30,102 @@ export const PoolManager: React.FC = () => {
   return (
     <div className="space-y-4">
       {/* Header card explaining how Bonus Pool works */}
-      <div className="p-4 rounded-3xl bg-gradient-to-br from-indigo-500/10 via-purple-500/10 to-pink-500/10 border border-indigo-500/20 text-slate-800 dark:text-slate-200">
-        <div className="flex items-start gap-3">
-          <div className="p-2.5 rounded-2xl bg-indigo-500 text-white shadow-md shadow-indigo-500/20 shrink-0">
-            <Gift className="w-5 h-5" />
-          </div>
-          <div>
-            <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-              Bounties Board
-              <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950/80 text-indigo-700 dark:text-indigo-300 font-semibold">
-                {poolTasks.length} {poolTasks.length === 1 ? 'bounty' : 'bounties'}
-              </span>
-            </h2>
-            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-              Post side contracts and extra rewards here. Each Bounty is worth a fixed <strong>$10</strong> (does not decrease over time). Whenever you capture <strong>100%</strong> of your active <strong>Most Wanted</strong> targets, a random <strong>Bounty</strong> from this board is automatically posted for you to claim!
-            </p>
-          </div>
+      <div className="p-4 rounded-lg bg-[#FFFDF9] dark:bg-[#1E1C1A] border border-[#E2DDD5] dark:border-[#2E2A26] shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+        <div className="flex items-baseline justify-between gap-2 flex-wrap">
+          <h2 className="font-serif tracking-tight font-bold text-base sm:text-lg text-[#1F1D1A] dark:text-[#EDE8E1]">
+            Standing Bounties Reservoir
+          </h2>
+          <span className="font-mono text-xs tracking-wider px-2 py-0.5 rounded border border-[#E2DDD5] dark:border-[#2E2A26] bg-[#F7F5F0] dark:bg-[#151413] text-[#8B5E3C] dark:text-[#D4A373] font-semibold">
+            {poolTasks.length} {poolTasks.length === 1 ? 'CONTRACT' : 'CONTRACTS'}
+          </span>
         </div>
-
-        {poolTasks.length > 0 && (
-          <div className="mt-3 pt-3 border-t border-indigo-200/40 dark:border-indigo-800/40 flex items-center">
-            <span className="text-xs text-indigo-700 dark:text-indigo-300 font-medium flex items-center gap-1">
-              <Sparkles className="w-3.5 h-3.5" /> Bounty reward ready (unlocked when Most Wanted is cleared)
-            </span>
-          </div>
-        )}
+        <p className="text-xs sm:text-sm text-[#70685E] dark:text-[#8C8479] mt-1.5 leading-relaxed">
+          Record side contracts and supplemental tasks here. Each standing Bounty carries a fixed{' '}
+          <strong className="font-mono text-[#8B5E3C] dark:text-[#D4A373]">$10</strong> reward (no hourly decay). When 100% of your active Most Wanted board is resolved, a random contract from this ledger is automatically posted.
+        </p>
       </div>
 
       {/* Add new pool task */}
-      <form onSubmit={handleAdd} className="relative flex items-center">
+      <form
+        onSubmit={handleAdd}
+        className="bg-[#FFFDF9] dark:bg-[#1E1C1A] rounded-lg border border-[#E2DDD5] dark:border-[#2E2A26] shadow-[0_1px_3px_rgba(0,0,0,0.02)] p-2 flex items-center gap-2"
+      >
         <input
           type="text"
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
-          placeholder="Post a new Bounty contract to the board..."
-          className="w-full bg-white dark:bg-slate-800/90 text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 text-sm sm:text-base pl-4 pr-12 py-3.5 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-500 transition-all"
+          placeholder="Register a new $10 Bounty contract..."
+          className="flex-1 min-w-0 bg-transparent text-[#1F1D1A] dark:text-[#EDE8E1] placeholder-[#70685E]/60 dark:placeholder-[#8C8479]/60 font-medium text-sm sm:text-base px-2 py-1 focus:outline-none"
         />
+        <span className="font-mono text-xs tracking-wider font-semibold text-[#8B5E3C] dark:text-[#D4A373] border-l border-[#E2DDD5] dark:border-[#2E2A26] pl-2.5 pr-1 select-none shrink-0">
+          $10
+        </span>
         <button
           type="submit"
           disabled={!newTitle.trim()}
           aria-label="Add bounty"
-          className="absolute right-2 p-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white rounded-xl shadow-sm transition-all focus:outline-none"
+          className="bg-[#1F1D1A] dark:bg-[#EDE8E1] text-[#FFFDF9] dark:text-[#151413] hover:opacity-90 disabled:opacity-40 text-xs font-medium uppercase tracking-wider px-3.5 py-2 rounded-md transition-opacity shrink-0"
         >
-          <Plus className="w-5 h-5 stroke-[2.5]" />
+          Add
         </button>
       </form>
 
       {/* List of pool tasks */}
       <div className="space-y-2">
         {poolTasks.length === 0 ? (
-          <div className="text-center py-10 px-4 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
-            <div className="w-10 h-10 mx-auto mb-2 rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-              <Gift className="w-5 h-5" />
-            </div>
-            <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-sm">
-              No Bounties posted yet
+          <div className="text-center py-10 px-4 rounded-lg border border-[#E2DDD5] dark:border-[#2E2A26] bg-[#FFFDF9] dark:bg-[#1E1C1A] shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+            <h3 className="font-serif tracking-tight font-bold text-[#1F1D1A] dark:text-[#EDE8E1] text-sm">
+              No Standing Bounties Recorded
             </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xs mx-auto">
-              Add side quests, extra contracts, or reward targets above so they can be unlocked when the Most Wanted board is cleared!
+            <p className="font-mono text-xs tracking-wider text-[#70685E] dark:text-[#8C8479] mt-1 max-w-xs mx-auto">
+              Add supplemental contracts above so they can be drawn when the main board is cleared.
             </p>
           </div>
         ) : (
-          poolTasks.map((task) => (
-            <div
-              key={task.id}
-              className="flex items-center justify-between gap-3 p-3.5 bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 rounded-2xl shadow-xs hover:border-slate-300 dark:hover:border-slate-600 transition-all"
-            >
-              <div className="flex items-center gap-2.5 min-w-0 flex-wrap">
-                <span className="text-indigo-500 font-bold text-sm">💰</span>
-                <span className="text-sm sm:text-base font-medium text-slate-800 dark:text-slate-100 break-words">
-                  {task.title}
-                </span>
-                <span
-                  className="inline-flex items-center text-[11px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/70 shrink-0"
-                  title="Fixed $10 bounty reward (does not decrease)"
-                >
-                  $10 Fixed
-                </span>
-              </div>
+          poolTasks.map((task) => {
+            const cleanTitle = task.title.replace(/^[💰🎁]\s*/, '');
+            return (
+              <div
+                key={task.id}
+                className="flex items-center justify-between gap-3 rounded-lg border border-[#E2DDD5] dark:border-[#2E2A26] bg-[#FFFDF9] dark:bg-[#1E1C1A] p-3.5 shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-all"
+              >
+                <div className="flex items-baseline gap-2 min-w-0 flex-wrap">
+                  <span className="font-medium text-sm sm:text-base text-[#1F1D1A] dark:text-[#EDE8E1] break-words">
+                    {cleanTitle}
+                  </span>
+                  <span
+                    className="font-mono text-xs tracking-wider font-semibold text-[#8B5E3C] dark:text-[#D4A373] shrink-0"
+                    title="Fixed $10 bounty reward (does not decrease)"
+                  >
+                    $10
+                  </span>
+                </div>
 
-              <div className="flex items-center gap-1 shrink-0">
-                {/* Pull now button */}
-                <button
-                  type="button"
-                  onClick={() => handleManualPull(task.id)}
-                  className="inline-flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 bg-slate-100 hover:bg-indigo-50 dark:bg-slate-700/60 dark:hover:bg-indigo-950/50 text-slate-700 dark:text-slate-200 hover:text-indigo-600 dark:hover:text-indigo-400 rounded-xl border border-slate-200/80 dark:border-slate-600/80 transition-all"
-                  title="Post to Most Wanted immediately"
-                >
-                  <span>Hunt Now</span>
-                  <ArrowUpRight className="w-3.5 h-3.5" />
-                </button>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Pull now button */}
+                  <button
+                    type="button"
+                    onClick={() => handleManualPull(task.id)}
+                    className="inline-flex items-center gap-1 font-mono text-xs tracking-wider uppercase px-2.5 py-1 bg-[#F7F5F0] dark:bg-[#151413] text-[#1F1D1A] dark:text-[#EDE8E1] hover:border-[#8B5E3C] dark:hover:border-[#D4A373] rounded border border-[#E2DDD5] dark:border-[#2E2A26] transition-colors"
+                    title="Post to Most Wanted immediately"
+                  >
+                    <span>Post</span>
+                    <ArrowUpRight className="w-3 h-3 text-[#8B5E3C] dark:text-[#D4A373]" />
+                  </button>
 
-                {/* Delete button */}
-                <button
-                  type="button"
-                  onClick={() => deletePoolTask(task.id)}
-                  aria-label="Delete bonus task"
-                  className="p-1.5 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
+                  {/* Delete button */}
+                  <button
+                    type="button"
+                    onClick={() => deletePoolTask(task.id)}
+                    aria-label="Delete bonus task"
+                    className="p-1.5 text-[#70685E] dark:text-[#8C8479] hover:text-[#9E2A2B] dark:hover:text-[#C94A4B] rounded transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

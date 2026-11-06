@@ -19,19 +19,71 @@ import {
 import { TaskItem } from './TaskItem';
 import { useTaskContext } from '@/context/TaskContext';
 import {
-  CalendarClock,
-  Trophy,
   X,
-  ListTodo,
   Trash2,
-  AlertTriangle,
-  Sunset,
   RotateCcw,
-  Sparkles,
-  Coins,
-  TrendingDown,
-  Clock,
 } from 'lucide-react';
+
+export const WeeklyBountyLedgerCard: React.FC = () => {
+  const {
+    currentWeekBountyPool,
+    todayBountyEarned,
+    currentWeekRangeLabel,
+    isSundayPoolReset,
+    setActiveTab,
+  } = useTaskContext();
+
+  return (
+    <div className="p-4 rounded-lg border border-[#E2DDD5] dark:border-[#2E2A26] bg-[#FFFDF9] dark:bg-[#1E1C1A] shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-serif tracking-widest uppercase text-xs font-bold text-[#70685E] dark:text-[#8C8479]">
+              Weekly Bounty Ledger
+            </span>
+            <span className="font-mono text-xs tracking-wider px-2 py-0.5 rounded border border-[#E2DDD5] dark:border-[#2E2A26] bg-[#F7F5F0] dark:bg-[#151413] text-[#70685E] dark:text-[#8C8479]">
+              {currentWeekRangeLabel}
+            </span>
+          </div>
+          <div className="flex items-baseline gap-2.5 mt-1.5">
+            <span className="font-mono text-2xl sm:text-3xl font-bold tracking-wider text-[#8B5E3C] dark:text-[#D4A373]">
+              ${currentWeekBountyPool.toLocaleString()}
+            </span>
+            {todayBountyEarned > 0 && (
+              <span className="font-mono text-xs tracking-wider font-semibold text-[#8B5E3C] dark:text-[#D4A373] border border-[#E2DDD5] dark:border-[#2E2A26] bg-[#F7F5F0] dark:bg-[#151413] px-2 py-0.5 rounded">
+                +${todayBountyEarned} TODAY
+              </span>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col items-start sm:items-end justify-between gap-1">
+          <button
+            type="button"
+            onClick={() => setActiveTab('history')}
+            className="font-mono text-xs tracking-wider uppercase font-semibold text-[#8B5E3C] dark:text-[#D4A373] hover:underline"
+          >
+            Inspect Ledger &rarr;
+          </button>
+          <span className="font-mono text-[11px] tracking-wider text-[#70685E] dark:text-[#8C8479]">
+            {isSundayPoolReset
+              ? 'SUNDAY EOD REACHED — LEDGER RESET'
+              : 'RESETS EOD SUNDAY'}
+          </span>
+        </div>
+      </div>
+
+      <div className="mt-3 pt-2.5 border-t border-[#E2DDD5] dark:border-[#2E2A26] flex items-center justify-between gap-2 flex-wrap font-mono text-xs tracking-wider text-[#70685E] dark:text-[#8C8479]">
+        <span>
+          MOST WANTED: <strong className="text-[#1F1D1A] dark:text-[#EDE8E1]">$100</strong> (-$1/HR, MIN $20)
+        </span>
+        <span>
+          BOUNTIES: <strong className="text-[#1F1D1A] dark:text-[#EDE8E1]">$10</strong> FIXED
+        </span>
+      </div>
+    </div>
+  );
+};
 
 export const DailyTaskList: React.FC = () => {
   const {
@@ -45,11 +97,6 @@ export const DailyTaskList: React.FC = () => {
     endDay,
     resumeDay,
     isDayEnded,
-    currentWeekBountyPool,
-    todayBountyEarned,
-    currentWeekRangeLabel,
-    isSundayPoolReset,
-    setActiveTab,
   } = useTaskContext();
 
   const [showClearConfirm, setShowClearConfirm] = useState(false);
@@ -103,87 +150,23 @@ export const DailyTaskList: React.FC = () => {
   };
 
   return (
-    <div className="space-y-3">
-      {/* Weekly Bounty Pool Card */}
-      <div className="p-4 rounded-3xl bg-gradient-to-br from-amber-500/15 via-emerald-500/10 to-teal-500/15 border border-amber-500/30 dark:border-amber-500/25 shadow-xs">
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-amber-500 to-emerald-600 text-white flex items-center justify-center shadow-md shadow-amber-500/20 shrink-0">
-              <Coins className="w-6 h-6" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-800 dark:text-amber-300">
-                  Weekly Bounty Pool
-                </span>
-                <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-white/80 dark:bg-slate-800/80 text-slate-600 dark:text-slate-300 border border-slate-200/70 dark:border-slate-700">
-                  {currentWeekRangeLabel}
-                </span>
-              </div>
-              <div className="flex items-baseline gap-2.5 mt-0.5">
-                <span className="text-2xl sm:text-3xl font-black tracking-tight text-slate-900 dark:text-white">
-                  ${currentWeekBountyPool}
-                </span>
-                {todayBountyEarned > 0 && (
-                  <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">
-                    +${todayBountyEarned} today
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="flex flex-col items-start sm:items-end justify-between text-xs gap-1">
-            <button
-              type="button"
-              onClick={() => setActiveTab('history')}
-              className="text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:underline flex items-center gap-1"
-            >
-              <span>View Weekly Chart →</span>
-            </button>
-            <span className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
-              <Clock className="w-3 h-3 text-amber-500 shrink-0" />
-              <span>
-                {isSundayPoolReset
-                  ? 'Sunday EOD reached — Pool reset for the new week!'
-                  : 'Resets automatically at End of Day Sunday'}
-              </span>
-            </span>
-          </div>
-        </div>
-
-        <div className="mt-2.5 pt-2 border-t border-amber-500/20 dark:border-slate-700/60 flex items-center justify-between gap-2 flex-wrap text-[11px] text-slate-600 dark:text-slate-400">
-          <span className="flex items-center gap-1">
-            <TrendingDown className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-            <span>
-              <strong>Most Wanted:</strong> Starts at <strong>$100</strong> (-$1/hr, min <strong>$20</strong>)
-            </span>
-          </span>
-          <span>
-            <strong>Bounties:</strong> Flat <strong>$10</strong> (no decay)
-          </span>
-        </div>
-      </div>
+    <div className="space-y-4">
 
       {/* Rollover Alert Banner */}
       {rolloverReport && rolloverReport.migratedCount > 0 && (
-        <div className="flex items-center justify-between gap-2 p-3 bg-gradient-to-r from-amber-500/10 to-orange-500/10 border border-amber-500/30 rounded-2xl text-amber-800 dark:text-amber-300 text-xs sm:text-sm animate-slide-up shadow-xs">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 bg-amber-500/20 rounded-lg text-amber-600 dark:text-amber-400">
-              <CalendarClock className="w-4 h-4" />
-            </div>
-            <div>
-              <p className="font-semibold">Still At Large! (Sundown Rollover)</p>
-              <p className="text-xs text-amber-700/80 dark:text-amber-400/80">
-                {rolloverReport.migratedCount} uncaptured{' '}
-                {rolloverReport.migratedCount === 1 ? 'outlaw' : 'outlaws'} slipped away
-                yesterday and returned to today’s Most Wanted board.
-              </p>
-            </div>
+        <div className="flex items-center justify-between gap-2 p-3.5 bg-[#FFFDF9] dark:bg-[#1E1C1A] border border-[#E2DDD5] dark:border-[#2E2A26] border-l-[3px] border-l-[#8B5E3C] dark:border-l-[#D4A373] rounded-lg animate-fade-in">
+          <div>
+            <p className="font-serif tracking-tight font-bold text-sm text-[#1F1D1A] dark:text-[#EDE8E1]">
+              Unresolved Notices Carried Forward
+            </p>
+            <p className="font-mono text-xs tracking-wider text-[#70685E] dark:text-[#8C8479] mt-0.5">
+              {rolloverReport.migratedCount} uncaptured{' '}
+              {rolloverReport.migratedCount === 1 ? 'target' : 'targets'} from yesterday returned to today&apos;s board.
+            </p>
           </div>
           <button
             onClick={dismissRolloverReport}
-            className="p-1 hover:bg-amber-500/20 rounded-lg text-amber-700 dark:text-amber-300 transition-colors"
+            className="p-1 text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1] transition-colors"
             aria-label="Dismiss banner"
           >
             <X className="w-4 h-4" />
@@ -193,72 +176,64 @@ export const DailyTaskList: React.FC = () => {
 
       {/* Day Completed Banner (Triggered when user ends day) */}
       {isDayEnded && (
-        <div className="p-4 rounded-2xl bg-gradient-to-tr from-indigo-500/15 via-purple-500/10 to-pink-500/10 border border-indigo-500/30 text-indigo-950 dark:text-indigo-200 text-center animate-slide-up shadow-xs space-y-2">
-          <div className="w-10 h-10 mx-auto bg-indigo-600 text-white rounded-full flex items-center justify-center shadow-md shadow-indigo-500/30">
-            <Sunset className="w-5 h-5" />
-          </div>
+        <div className="p-4 rounded-lg bg-[#FFFDF9] dark:bg-[#1E1C1A] border border-[#E2DDD5] dark:border-[#2E2A26] text-center animate-fade-in space-y-2.5">
           <div>
-            <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white flex items-center justify-center gap-1.5">
-              <span>Spurs Hung Up for Tonight 🤠</span>
+            <h3 className="font-serif tracking-tight font-bold text-base text-[#1F1D1A] dark:text-[#EDE8E1]">
+              Ledger Closed for the Evening
             </h3>
-            <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 max-w-sm mx-auto">
-              You called off the posse for today. New Bounty postings are paused until dawn.
+            <p className="text-xs text-[#70685E] dark:text-[#8C8479] mt-1 max-w-sm mx-auto">
+              Active hunting is paused for today. Automatic Bounty postings resume at dawn.
             </p>
           </div>
           <button
             type="button"
             onClick={resumeDay}
-            className="inline-flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-xl bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shadow-2xs"
+            className="inline-flex items-center gap-1.5 font-mono text-xs tracking-wider uppercase font-semibold px-3 py-1.5 rounded-md bg-[#F7F5F0] dark:bg-[#151413] text-[#1F1D1A] dark:text-[#EDE8E1] border border-[#E2DDD5] dark:border-[#2E2A26] hover:border-[#8B5E3C] dark:hover:border-[#D4A373] transition-colors"
           >
-            <RotateCcw className="w-3.5 h-3.5 text-indigo-500" />
-            <span>Back in the Saddle</span>
+            <RotateCcw className="w-3 h-3 text-[#8B5E3C] dark:text-[#D4A373]" />
+            <span>Reopen Ledger</span>
           </button>
         </div>
       )}
 
-      {/* Done for the Day Banner (When all daily tasks completed and bonus pool is empty and not already ended) */}
+      {/* Done for the Day Banner */}
       {!isDayEnded && isTodayAllCompleted && poolTasks.length === 0 && (
-        <div className="p-4 rounded-2xl bg-gradient-to-tr from-emerald-500/15 via-teal-500/10 to-emerald-500/5 border border-emerald-500/30 text-emerald-900 dark:text-emerald-200 text-center animate-slide-up shadow-xs">
-          <div className="w-10 h-10 mx-auto mb-2 bg-emerald-500 text-white rounded-full flex items-center justify-center shadow-md shadow-emerald-500/30">
-            <Trophy className="w-5 h-5" />
-          </div>
-          <h3 className="font-bold text-sm sm:text-base text-emerald-950 dark:text-white">
-            The Town is Safe &amp; Clear! 🤠
+        <div className="p-4 rounded-lg bg-[#FFFDF9] dark:bg-[#1E1C1A] border border-[#E2DDD5] dark:border-[#2E2A26] text-center animate-fade-in">
+          <h3 className="font-serif tracking-tight font-bold text-base text-[#1F1D1A] dark:text-[#EDE8E1]">
+            All Notices Resolved
           </h3>
-          <p className="text-xs text-emerald-800/80 dark:text-emerald-300/80 mt-1 max-w-sm mx-auto">
-            Every Most Wanted target and Bounty has been captured. Fine work, Sheriff!
+          <p className="font-mono text-xs tracking-wider text-[#70685E] dark:text-[#8C8479] mt-1 max-w-sm mx-auto">
+            Every Most Wanted target and Bounty on the board has been claimed.
           </p>
         </div>
       )}
 
-      {/* Top Header Row with Actions (End Day & Clear All) */}
-      <div className="flex items-center justify-between px-1 pt-1">
-        <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+      {/* Section Header Row with Actions */}
+      <div className="flex items-center justify-between pt-2 border-b border-[#E2DDD5] dark:border-[#2E2A26] pb-2">
+        <h2 className="font-serif tracking-widest uppercase text-xs font-bold text-[#70685E] dark:text-[#8C8479]">
           Most Wanted — Dead or Alive {todaysTasks.length > 0 ? `(${todaysTasks.length})` : ''}
-        </span>
+        </h2>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2">
           {/* End Day Button */}
           {!isDayEnded ? (
             <button
               type="button"
               onClick={() => setShowEndDayConfirm(true)}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 px-2.5 py-1 rounded-lg border border-indigo-200/60 dark:border-indigo-800/60 transition-colors active:scale-95 shadow-2xs"
+              className="font-mono text-xs tracking-wider uppercase text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1] px-2 py-1 rounded border border-[#E2DDD5] dark:border-[#2E2A26] bg-[#FFFDF9] dark:bg-[#1E1C1A] transition-colors"
               aria-label="Hang Up Spurs"
-              title="Call off the hunt for today and pause new Bounties"
+              title="Close today's ledger and pause new Bounties"
             >
-              <Sunset className="w-3.5 h-3.5" />
-              <span>Hang Up Spurs</span>
+              Close Day
             </button>
           ) : (
             <button
               type="button"
               onClick={resumeDay}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 transition-colors active:scale-95"
+              className="font-mono text-xs tracking-wider uppercase text-[#8B5E3C] dark:text-[#D4A373] hover:opacity-80 px-2 py-1 rounded border border-[#E2DDD5] dark:border-[#2E2A26] bg-[#FFFDF9] dark:bg-[#1E1C1A] transition-colors"
               aria-label="Back in the Saddle"
             >
-              <RotateCcw className="w-3.5 h-3.5 text-indigo-500" />
-              <span>Back in the Saddle</span>
+              Reopen Day
             </button>
           )}
 
@@ -267,11 +242,11 @@ export const DailyTaskList: React.FC = () => {
             <button
               type="button"
               onClick={() => setShowClearConfirm(true)}
-              className="inline-flex items-center gap-1 text-xs font-semibold text-rose-600 dark:text-rose-400 hover:text-rose-700 dark:hover:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-950/40 px-2 py-1 rounded-lg transition-colors active:scale-95"
-              aria-label="Tear down all posters from Most Wanted"
+              className="inline-flex items-center gap-1 font-mono text-xs tracking-wider uppercase text-[#9E2A2B] dark:text-[#C94A4B] hover:opacity-80 px-2 py-1 rounded border border-[#E2DDD5] dark:border-[#2E2A26] bg-[#FFFDF9] dark:bg-[#1E1C1A] transition-colors"
+              aria-label="Clear all notices from Most Wanted"
             >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span>Clear Board</span>
+              <Trash2 className="w-3 h-3" />
+              <span>Clear</span>
             </button>
           )}
         </div>
@@ -279,35 +254,32 @@ export const DailyTaskList: React.FC = () => {
 
       {/* End Day Confirmation Modal */}
       {showEndDayConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-fade-in">
-          <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 border border-indigo-500/30 rounded-3xl p-5 shadow-2xl text-center space-y-3.5 animate-scale-up">
-            <div className="w-12 h-12 mx-auto rounded-2xl bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-              <Sunset className="w-6 h-6" />
-            </div>
-            <div className="space-y-1">
-              <h3 className="font-bold text-base text-slate-900 dark:text-white">
-                Hang Up Your Spurs?
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#151413]/70 backdrop-blur-xs animate-fade-in">
+          <div className="relative w-full max-w-sm bg-[#FFFDF9] dark:bg-[#1E1C1A] border border-[#E2DDD5] dark:border-[#2E2A26] rounded-lg p-5 shadow-lg text-center space-y-4 animate-scale-up">
+            <div className="space-y-1.5">
+              <h3 className="font-serif tracking-tight font-bold text-base text-[#1F1D1A] dark:text-[#EDE8E1]">
+                Close the Ledger for Tonight?
               </h3>
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                This will close out today&apos;s hunt and stop posting new Bounties until dawn.
+              <p className="text-xs text-[#70685E] dark:text-[#8C8479] leading-relaxed">
+                This will conclude today&apos;s active hunt and pause automatic Bounty postings until dawn.
               </p>
             </div>
-            <div className="flex items-center gap-2 pt-2">
+            <div className="flex items-center gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => setShowEndDayConfirm(false)}
                 disabled={isEndingDay}
-                className="flex-1 py-2 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                className="flex-1 py-2 font-mono text-xs uppercase tracking-wider rounded-md border border-[#E2DDD5] dark:border-[#2E2A26] text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1] transition-colors"
               >
-                Keep Hunting
+                Cancel
               </button>
               <button
                 type="button"
                 onClick={handleConfirmEndDay}
                 disabled={isEndingDay}
-                className="flex-1 py-2 text-xs font-bold rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white shadow-xs transition-colors"
+                className="flex-1 bg-[#1F1D1A] dark:bg-[#EDE8E1] text-[#FFFDF9] dark:text-[#151413] hover:opacity-90 text-xs font-medium uppercase tracking-wider px-3.5 py-2 rounded-md transition-opacity"
               >
-                {isEndingDay ? 'Closing Hunt...' : 'Yes, Call It a Night'}
+                {isEndingDay ? 'Closing...' : 'Close Ledger'}
               </button>
             </div>
           </div>
@@ -316,25 +288,22 @@ export const DailyTaskList: React.FC = () => {
 
       {/* Clear Confirmation Modal */}
       {showClearConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-xs animate-fade-in">
-          <div className="relative w-full max-w-sm bg-white dark:bg-slate-900 border border-rose-500/30 rounded-3xl p-5 shadow-2xl text-center space-y-3.5 animate-scale-up">
-            <div className="w-12 h-12 mx-auto rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center">
-              <AlertTriangle className="w-6 h-6" />
-            </div>
-            <div className="space-y-1">
-              <h3 className="font-bold text-base text-slate-900 dark:text-white">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#151413]/70 backdrop-blur-xs animate-fade-in">
+          <div className="relative w-full max-w-sm bg-[#FFFDF9] dark:bg-[#1E1C1A] border border-[#E2DDD5] dark:border-[#2E2A26] rounded-lg p-5 shadow-lg text-center space-y-4 animate-scale-up">
+            <div className="space-y-1.5">
+              <h3 className="font-serif tracking-tight font-bold text-base text-[#1F1D1A] dark:text-[#EDE8E1]">
                 Clear the Most Wanted Board?
               </h3>
-              <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                Are you sure you want to tear down all posters from today&apos;s Most Wanted list? This cannot be undone.
+              <p className="text-xs text-[#70685E] dark:text-[#8C8479] leading-relaxed">
+                Are you sure you want to remove all notices from today&apos;s Most Wanted list? This action cannot be undone.
               </p>
             </div>
-            <div className="flex items-center gap-2 pt-2">
+            <div className="flex items-center gap-2 pt-1">
               <button
                 type="button"
                 onClick={() => setShowClearConfirm(false)}
                 disabled={isClearing}
-                className="flex-1 py-2 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                className="flex-1 py-2 font-mono text-xs uppercase tracking-wider rounded-md border border-[#E2DDD5] dark:border-[#2E2A26] text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1] transition-colors"
               >
                 Cancel
               </button>
@@ -342,9 +311,9 @@ export const DailyTaskList: React.FC = () => {
                 type="button"
                 onClick={handleConfirmClear}
                 disabled={isClearing}
-                className="flex-1 py-2 text-xs font-bold rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-xs transition-colors"
+                className="flex-1 py-2 text-xs font-medium uppercase tracking-wider rounded-md bg-[#9E2A2B] dark:bg-[#C94A4B] text-[#FFFDF9] hover:opacity-90 transition-opacity"
               >
-                {isClearing ? 'Tearing Down...' : 'Yes, Clear Board'}
+                {isClearing ? 'Clearing...' : 'Confirm Clear'}
               </button>
             </div>
           </div>
@@ -353,15 +322,12 @@ export const DailyTaskList: React.FC = () => {
 
       {/* Empty State */}
       {todaysTasks.length === 0 ? (
-        <div className="text-center py-12 px-4 rounded-3xl border-2 border-dashed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
-          <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-            <ListTodo className="w-6 h-6" />
-          </div>
-          <h3 className="font-semibold text-slate-800 dark:text-slate-200 text-base">
-            No outlaws on the board
+        <div className="text-center py-10 px-4 rounded-lg border border-[#E2DDD5] dark:border-[#2E2A26] bg-[#FFFDF9] dark:bg-[#1E1C1A] shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
+          <h3 className="font-serif tracking-tight font-bold text-[#1F1D1A] dark:text-[#EDE8E1] text-base">
+            No Active Notices on the Board
           </h3>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-xs mx-auto">
-            The town is quiet, Sheriff. Post your Most Wanted targets above to start the hunt!
+          <p className="font-mono text-xs tracking-wider text-[#70685E] dark:text-[#8C8479] mt-1 max-w-xs mx-auto">
+            Post a Most Wanted target above to begin recording today&apos;s ledger.
           </p>
         </div>
       ) : (

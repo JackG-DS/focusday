@@ -14,6 +14,7 @@ export interface DailyTask {
   bounty_started_at?: string; // ISO timestamp when hourly decay started on Most Wanted
   bounty_earned?: number | null; // Locked-in $ value when completed
   completed_at?: string | null; // ISO timestamp when completed
+  bounty_amount?: number | null; // Custom starting bounty value (defaults to $100)
 }
 
 export interface BountyTaskMeta {
@@ -21,6 +22,7 @@ export interface BountyTaskMeta {
   bounty_started_at?: string;
   bounty_earned?: number | null;
   completed_at?: string | null;
+  bounty_amount?: number | null;
 }
 
 export interface BountyLedgerEntry {

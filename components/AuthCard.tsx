@@ -2,16 +2,10 @@
 
 import React, { useState } from 'react';
 import {
-  User as UserIcon,
-  Mail,
-  Lock,
-  LogIn,
-  UserPlus,
   LogOut,
   AlertCircle,
   CheckCircle2,
   Loader2,
-  ShieldCheck,
 } from 'lucide-react';
 import { useTaskContext } from '@/context/TaskContext';
 
@@ -38,7 +32,7 @@ export const AuthCard: React.FC = () => {
     setAuthError(null);
 
     if (!supabaseConfig.enabled || !supabaseConfig.url || !supabaseConfig.anonKey) {
-      setAuthError('Please configure your Supabase Project URL & Anon Key in Cloud Sync settings first.');
+      setAuthError('Please configure your Supabase Project URL & Anon Key below first.');
       return;
     }
 
@@ -55,42 +49,33 @@ export const AuthCard: React.FC = () => {
     if (mode === 'signin') {
       const ok = await handleSignIn(email, password);
       if (ok) {
-        setSuccessMessage('Signed in successfully!');
+        setSuccessMessage('Signed in successfully.');
       }
     } else {
       const ok = await handleSignUp(email, password);
       if (ok) {
-        setSuccessMessage('Account created! Please check your email for confirmation if required, or sign in.');
+        setSuccessMessage('Account created. Check your email for confirmation if required.');
       }
     }
   };
 
-  // If user is already authenticated
   if (authUser.isAuthenticated) {
     return (
-      <div className="p-4 rounded-3xl bg-gradient-to-br from-emerald-500/10 via-teal-500/10 to-blue-500/10 border border-emerald-500/30 text-slate-800 dark:text-slate-100 shadow-xs space-y-3">
+      <div className="p-4 rounded-lg bg-[#FFFDF9] dark:bg-[#1E1C1A] border border-[#E2DDD5] dark:border-[#2E2A26] shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-md shadow-emerald-500/20 shrink-0">
-              <UserIcon className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="flex items-center gap-1.5">
-                <h4 className="font-bold text-sm text-slate-900 dark:text-white">
-                  {authUser.email || 'Authenticated User'}
-                </h4>
-                <ShieldCheck className="w-4 h-4 text-emerald-500" />
-              </div>
-              <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium">
-                Row-Level Security (RLS) Active &bull; Synced
-              </p>
-            </div>
+          <div>
+            <p className="font-mono text-[10px] tracking-widest uppercase text-[#8B5E3C] dark:text-[#D4A373] font-semibold">
+              Authenticated Ledger Account
+            </p>
+            <h4 className="font-serif tracking-tight font-bold text-sm sm:text-base text-[#1F1D1A] dark:text-[#EDE8E1] mt-0.5">
+              {authUser.email || 'Authenticated User'}
+            </h4>
           </div>
 
           <button
             onClick={handleSignOut}
             disabled={authLoading}
-            className="px-3 py-1.5 bg-white dark:bg-slate-800 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-900/50 rounded-xl text-xs font-bold hover:bg-rose-50 dark:hover:bg-rose-950/40 transition-colors flex items-center gap-1.5 shadow-2xs"
+            className="px-3 py-1.5 bg-[#F7F5F0] dark:bg-[#151413] text-[#9E2A2B] dark:text-[#C94A4B] border border-[#E2DDD5] dark:border-[#2E2A26] rounded-md font-mono text-xs uppercase tracking-wider hover:border-[#9E2A2B] dark:hover:border-[#C94A4B] transition-colors flex items-center gap-1.5"
           >
             {authLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogOut className="w-3.5 h-3.5" />}
             <span>Sign Out</span>
@@ -101,24 +86,19 @@ export const AuthCard: React.FC = () => {
   }
 
   return (
-    <div className="p-4 rounded-3xl bg-white dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/80 shadow-xs space-y-3.5">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="p-2 rounded-xl bg-indigo-500 text-white shadow-xs">
-            <UserIcon className="w-5 h-5" />
-          </div>
-          <div>
-            <h3 className="font-bold text-sm sm:text-base text-slate-900 dark:text-white">
-              User Account & Auth
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Sign in to protect your tasks with Row-Level Security (RLS).
-            </p>
-          </div>
+    <div className="p-4 sm:p-5 rounded-lg bg-[#FFFDF9] dark:bg-[#1E1C1A] border border-[#E2DDD5] dark:border-[#2E2A26] shadow-[0_1px_3px_rgba(0,0,0,0.02)] space-y-3.5">
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div>
+          <h3 className="font-serif tracking-tight font-bold text-sm sm:text-base text-[#1F1D1A] dark:text-[#EDE8E1]">
+            Account Credentials
+          </h3>
+          <p className="text-xs text-[#70685E] dark:text-[#8C8479]">
+            Sign in to protect your ledger with Row-Level Security.
+          </p>
         </div>
 
         {/* Mode Switcher Tabs */}
-        <div className="flex bg-slate-100 dark:bg-slate-900 p-0.5 rounded-xl text-xs font-semibold">
+        <div className="flex bg-[#F7F5F0] dark:bg-[#151413] p-0.5 rounded-md border border-[#E2DDD5] dark:border-[#2E2A26] font-mono text-xs uppercase tracking-wider">
           <button
             type="button"
             onClick={() => {
@@ -126,10 +106,10 @@ export const AuthCard: React.FC = () => {
               setAuthError(null);
               setSuccessMessage(null);
             }}
-            className={`px-3 py-1 rounded-lg transition-all ${
+            className={`px-2.5 py-1 rounded-sm transition-all ${
               mode === 'signin'
-                ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                ? 'bg-[#1F1D1A] dark:bg-[#EDE8E1] text-[#FFFDF9] dark:text-[#151413] font-semibold'
+                : 'text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1]'
             }`}
           >
             Sign In
@@ -141,86 +121,74 @@ export const AuthCard: React.FC = () => {
               setAuthError(null);
               setSuccessMessage(null);
             }}
-            className={`px-3 py-1 rounded-lg transition-all ${
+            className={`px-2.5 py-1 rounded-sm transition-all ${
               mode === 'signup'
-                ? 'bg-white dark:bg-slate-800 text-indigo-600 dark:text-indigo-400 shadow-xs'
-                : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
+                ? 'bg-[#1F1D1A] dark:bg-[#EDE8E1] text-[#FFFDF9] dark:text-[#151413] font-semibold'
+                : 'text-[#70685E] dark:text-[#8C8479] hover:text-[#1F1D1A] dark:hover:text-[#EDE8E1]'
             }`}
           >
-            Sign Up
+            Register
           </button>
         </div>
       </div>
 
       {/* Error and Success alerts */}
       {authError && (
-        <div className="p-2.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 rounded-xl text-rose-700 dark:text-rose-300 text-xs flex items-center gap-2">
+        <div className="p-2.5 bg-[#F7F5F0] dark:bg-[#151413] border border-[#9E2A2B] dark:border-[#C94A4B] rounded text-[#9E2A2B] dark:text-[#C94A4B] font-mono text-xs tracking-wider flex items-center gap-2">
           <AlertCircle className="w-4 h-4 shrink-0" />
           <span>{authError}</span>
         </div>
       )}
 
       {successMessage && (
-        <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 rounded-xl text-emerald-700 dark:text-emerald-300 text-xs flex items-center gap-2">
+        <div className="p-2.5 bg-[#F7F5F0] dark:bg-[#151413] border border-[#8B5E3C] dark:border-[#D4A373] rounded text-[#8B5E3C] dark:text-[#D4A373] font-mono text-xs tracking-wider flex items-center gap-2">
           <CheckCircle2 className="w-4 h-4 shrink-0" />
           <span>{successMessage}</span>
         </div>
       )}
 
       {/* Auth Form */}
-      <form onSubmit={handleSubmit} className="space-y-2.5">
+      <form onSubmit={handleSubmit} className="space-y-3">
         <div>
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+          <label className="block font-mono text-xs tracking-wider uppercase text-[#70685E] dark:text-[#8C8479] mb-1">
             Email Address
           </label>
-          <div className="relative flex items-center">
-            <Mail className="w-4 h-4 absolute left-3 text-slate-400" />
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-3 py-2 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            />
-          </div>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            required
+            className="w-full text-sm bg-[#F7F5F0] dark:bg-[#151413] border border-[#E2DDD5] dark:border-[#2E2A26] rounded-md px-3 py-2 text-[#1F1D1A] dark:text-[#EDE8E1] placeholder-[#70685E]/50 focus:outline-none focus:border-[#8B5E3C] dark:focus:border-[#D4A373]"
+          />
         </div>
 
         <div>
-          <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
+          <label className="block font-mono text-xs tracking-wider uppercase text-[#70685E] dark:text-[#8C8479] mb-1">
             Password
           </label>
-          <div className="relative flex items-center">
-            <Lock className="w-4 h-4 absolute left-3 text-slate-400" />
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="•••••••• (min 6 characters)"
-              required
-              minLength={6}
-              className="w-full text-xs sm:text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-3 py-2 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            />
-          </div>
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Minimum 6 characters"
+            required
+            minLength={6}
+            className="w-full text-sm bg-[#F7F5F0] dark:bg-[#151413] border border-[#E2DDD5] dark:border-[#2E2A26] rounded-md px-3 py-2 text-[#1F1D1A] dark:text-[#EDE8E1] placeholder-[#70685E]/50 focus:outline-none focus:border-[#8B5E3C] dark:focus:border-[#D4A373]"
+          />
         </div>
 
         <button
           type="submit"
           disabled={authLoading}
-          className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 active:scale-98 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition-all shadow-xs flex items-center justify-center gap-1.5 mt-1"
+          className="w-full bg-[#1F1D1A] dark:bg-[#EDE8E1] text-[#FFFDF9] dark:text-[#151413] hover:opacity-90 disabled:opacity-50 text-xs font-medium uppercase tracking-wider px-3.5 py-2.5 rounded-md transition-opacity flex items-center justify-center gap-1.5"
         >
-          {authLoading ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
-          ) : mode === 'signin' ? (
-            <LogIn className="w-4 h-4" />
-          ) : (
-            <UserPlus className="w-4 h-4" />
-          )}
+          {authLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : null}
           <span>
             {authLoading
               ? 'Authenticating...'
               : mode === 'signin'
-              ? 'Sign In with Email'
+              ? 'Sign In'
               : 'Create Account'}
           </span>
         </button>

@@ -79,7 +79,7 @@ interface TaskContextType {
   tomorrowStr: string;
   historyDates: string[];
   getTasksForDate: (date: string) => DailyTask[];
-  addDailyTask: (title: string, notes?: string | null, color?: string | null, date?: string) => Promise<TaskActionResult>;
+  addDailyTask: (title: string, notes?: string | null, color?: string | null, date?: string, bountyAmount?: number | null) => Promise<TaskActionResult>;
   toggleDailyTask: (id: string) => Promise<void>;
   updateDailyTaskTitle: (id: string, newTitle: string) => Promise<void>;
   updateDailyTaskNotes: (id: string, newNotes: string | null) => Promise<void>;
@@ -200,7 +200,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         particleCount: 80,
         spread: 70,
         origin: { y: 0.6 },
-        colors: ['#22c55e', '#3b82f6', '#eab308', '#ec4899', '#8b5cf6'],
+        colors: ['#8B5E3C', '#D4A373', '#9E2A2B', '#C94A4B', '#1F1D1A'],
       });
       setTimeout(() => {
         confetti({
@@ -479,6 +479,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
               is_bonus: inferredBonus,
               bounty_started_at: t.bounty_started_at || meta?.bounty_started_at || t.created_at,
               bounty_earned: t.bounty_earned ?? meta?.bounty_earned ?? null,
+              bounty_amount: t.bounty_amount ?? meta?.bounty_amount ?? 100,
               completed_at: t.completed_at ?? meta?.completed_at ?? null,
             };
           });
@@ -702,6 +703,7 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         is_bonus: inferredBonus,
         bounty_started_at: t.bounty_started_at || meta?.bounty_started_at || t.created_at,
         bounty_earned: t.bounty_earned ?? meta?.bounty_earned ?? null,
+        bounty_amount: t.bounty_amount ?? meta?.bounty_amount ?? 100,
         completed_at: t.completed_at ?? meta?.completed_at ?? null,
       };
     });
@@ -1084,7 +1086,8 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
       title: string,
       notes?: string | null,
       color?: string | null,
-      date?: string
+      date?: string,
+      bountyAmount?: number | null
     ): Promise<TaskActionResult> => {
       if (!title.trim()) return { success: false, message: 'Task title cannot be empty' };
       const trimmedTitle = title.trim();
@@ -1135,12 +1138,17 @@ export const TaskProvider: React.FC<{ children: React.ReactNode }> = ({ children
         created_at: startTimestamp,
         is_bonus: false,
         bounty_started_at: startTimestamp,
+        bounty_amount: typeof bountyAmount === 'number' && bountyAmount > 0 ? bountyAmount : 100,
       };
 
       setBountyMetaMap((prev) => {
         const next = {
           ...prev,
-          [newTask.id]: { is_bonus: false, bounty_started_at: startTimestamp },
+          [newTask.id]: {
+            is_bonus: false,
+            bounty_started_at: startTimestamp,
+            bounty_amount: newTask.bounty_amount,
+          },
         };
         StorageService.saveBountyMetaMap(next);
         return next;
